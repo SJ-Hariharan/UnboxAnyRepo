@@ -39,6 +39,17 @@ async function main(): Promise<void> {
   const app = createApp({ config, github, runner });
   const status = await runner.status(true);
 
+  app.server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${config.port} on ${config.host} is already in use. Stop the other process or set PORT to a free port.`);
+    } else if (err.code === 'EACCES') {
+      console.error(`Not allowed to listen on ${config.host}:${config.port}. Choose a port above 1024 or check permissions.`);
+    } else {
+      console.error(`Server error: ${err.message}`);
+    }
+    process.exit(1);
+  });
+
   app.server.listen(config.port, config.host, () => {
     const addr = app.server.address();
     const port = typeof addr === 'object' && addr ? addr.port : config.port;

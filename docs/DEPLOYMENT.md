@@ -55,7 +55,7 @@ If the configured runtime is missing, images are absent or Docker is unreachable
 ## Web server setup
 
 ```sh
-npm ci            # or npm install on first setup, then commit package-lock.json
+npm ci            # exact versions from package-lock.json
 NODE_ENV=production \
 REPORADAR_RUNNER=docker \
 REPORADAR_DOCKER_RUNTIME=runsc \

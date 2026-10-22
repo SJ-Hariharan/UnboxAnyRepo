@@ -4,7 +4,7 @@
 
 - [ ] **Choose a license** and add `LICENSE` (for example MIT or Apache-2.0); update `package.json` and the README section.
 - [ ] Replace the security contact placeholder in `SECURITY.md`, and enable GitHub private vulnerability reporting.
-- [ ] Run `npm install` on a machine with registry access and **commit `package-lock.json`**; switch CI to `npm ci`.
+- [ ] **Commit `package-lock.json`** (generated and verified with `npm ci`; CI already uses `npm ci`).
 - [ ] Pin sandbox images by digest in your deployment, and pin GitHub Actions to commit SHAs.
 - [ ] Run `npm run check`, `npm run test:e2e`, and `npm run test:docker` with `REPORADAR_DOCKER_RUNTIME=runsc` on a real gVisor host.
 - [ ] Deploy a demo instance with **execution disabled** (or demo mode) so visitors can explore safely.

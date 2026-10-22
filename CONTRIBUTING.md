@@ -5,7 +5,7 @@ Thank you for helping. RepoRadar runs untrusted code, so the bar for changes to 
 ## Setup
 
 ```sh
-npm install
+npm ci
 npm run demo        # http://127.0.0.1:8787 with bundled fixtures, no GitHub access needed
 npm run check       # typecheck + unit + API tests
 npx playwright install chromium && npm run test:e2e

@@ -41,19 +41,23 @@ Every check step runs with **no network**. Yarn, pnpm, Bun, Poetry-only, `setup.
 
 ## Quick start
 
-Requirements: Node.js **22.18 or newer** (TypeScript runs directly through Node's type stripping, so there is no build step).
+Requirements: Node.js **22.18 or newer** (TypeScript runs directly through Node's type stripping, so there is no build step). Docker is **not** needed to inspect repositories.
 
 ```sh
-git clone <this repository>
+git clone <repository-url>   # placeholder: the public URL is not decided yet
 cd reporadar
-npm install
+npm ci                       # installs the exact versions in package-lock.json
 
 npm run demo   # offline: bundled demo repositories, GitHub is not contacted
 # or
 npm start      # live: inspects public repositories on github.com
 ```
 
-Open <http://127.0.0.1:8787>. By default **execution is disabled**: you can inspect repositories and review exactly what each check would run. To execute checks, set up a sandbox host as described below.
+Open <http://127.0.0.1:8787>. If that port is taken, the server says so and exits; pick another with `PORT=8788 npm run demo`.
+
+By default **execution is disabled**, in both demo and live mode: you can inspect repositories and review exactly what each check would run, but the Start button stays disabled and the API refuses to start runs. The run screenshots in this README come from the test suite's scripted runner, not from `npm run demo`. To execute checks, set up a sandbox host as described below.
+
+To keep settings in a file, copy `.env.example` to `.env` and start with `node --env-file=.env src/server.ts`.
 
 ![Home page in demo mode](docs/screenshots/home-light.png)
 
@@ -123,19 +127,26 @@ The server is trusted and holds the only secrets. Everything from the browser, G
 ## Testing and quality checks
 
 ```sh
-npm run typecheck   # tsc over server, tests and the browser script (checkJs)
-npm test            # unit + API tests (no network, no Docker)
-npm run test:e2e    # browser tests with Playwright (run `npx playwright install chromium` once)
-npm run check       # typecheck + unit + API
+npm run typecheck                 # tsc over server, tests and the browser script (checkJs)
+npm test                          # unit + API tests (no network, no Docker)
+npx playwright install chromium   # once, before the browser tests
+npm run test:e2e                  # browser tests with Playwright (scripted runner, no Docker)
+npm run check                     # typecheck + unit + API
 ```
 
-Real-container tests are opt-in because they need Docker and sandbox images:
+Real-container tests are opt-in because they need Docker, gVisor and pulled sandbox images:
 
 ```sh
+node scripts/pull-images.ts
 REPORADAR_TEST_DOCKER=1 REPORADAR_DOCKER_RUNTIME=runsc npm run test:docker
 ```
 
-They run the demo fixtures end to end and probe the sandbox from inside: uid, network, read-only root, environment, memory/PID/disk limits, timeout process-tree kill, cancellation, output caps and cleanup.
+They run the demo fixtures end to end and probe the sandbox from inside: uid, network, read-only root, environment, memory/PID/disk limits, timeout process-tree kill, cancellation, output caps and cleanup. Without `REPORADAR_TEST_DOCKER=1` all 11 are skipped. On a machine that has Docker but no gVisor (for example Docker Desktop on macOS), only `fails closed when the configured runtime is missing` is meaningful; the others fail because the runner correctly refuses to start:
+
+```sh
+REPORADAR_TEST_DOCKER=1 REPORADAR_DOCKER_RUNTIME=runsc \
+  node --test --test-name-pattern="fails closed" test/integration/docker.test.ts
+```
 
 ## Deployment
 
@@ -169,6 +180,8 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and pl
 ## License
 
 **No license has been chosen yet.** Until the maintainers add a `LICENSE` file, all rights are reserved by default and this code is not open source. Choosing a license is a launch blocker; see [docs/LAUNCH.md](docs/LAUNCH.md).
+
+Other placeholders that maintainers must fill in before launch: the security contact in [SECURITY.md](SECURITY.md), the conduct contact in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and the repository URL in the quick start above.
 
 ## A note on popularity
 
