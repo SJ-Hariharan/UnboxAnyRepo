@@ -1,0 +1,1 @@
+{ "description": "Declares an npm dependency, so its check needs the registry proxy and an extra confirmation.", "language": "JavaScript" }

@@ -1,0 +1,1 @@
+{ "description": "Builds with a Makefile only. RepoRadar never runs Makefiles, so this shows the unsupported state.", "language": "C" }

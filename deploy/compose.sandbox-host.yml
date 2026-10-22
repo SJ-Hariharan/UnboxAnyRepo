@@ -1,0 +1,41 @@
+# Helpers for the SANDBOX HOST (the machine whose Docker daemon runs the checks).
+# Creates the internal dependency-fetch network and the registry egress proxy.
+#
+#   docker compose -f deploy/compose.sandbox-host.yml up -d
+#
+# Then configure RepoRadar with:
+#   REPORADAR_FETCH_NETWORK=reporadar-fetch
+#   REPORADAR_FETCH_PROXY_URL=http://reporadar-egress:3128
+#
+# Review before use. The proxy logic is covered by unit tests and its network
+# isolation was checked manually with Docker; this exact compose file has not
+# been run in CI. Pin the image by digest in production.
+name: reporadar-sandbox
+
+networks:
+  reporadar-fetch:
+    name: reporadar-fetch
+    internal: true          # no route out; install containers can reach only the proxy
+  reporadar-egress:
+    name: reporadar-egress-out
+
+services:
+  egress-proxy:
+    image: node:24-bookworm-slim
+    command: ["node", "/app/src/egress-proxy/main.ts"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      REPORADAR_EGRESS_PORT: "3128"
+      # REPORADAR_EGRESS_ALLOWLIST: "registry.npmjs.org,pypi.org,files.pythonhosted.org,proxy.golang.org,sum.golang.org,index.crates.io,static.crates.io"
+    volumes:
+      - ../src:/app/src:ro
+    networks:
+      reporadar-fetch:
+        aliases: [reporadar-egress]
+      reporadar-egress: {}
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped

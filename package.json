@@ -1,0 +1,31 @@
+{
+  "name": "reporadar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inspect a public GitHub repository at a pinned commit and run one allowlisted check in a disposable sandbox.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "demo": "node src/server.ts --demo",
+    "typecheck": "tsc -p tsconfig.json && tsc -p public/tsconfig.json",
+    "test": "node --test --test-reporter=spec \"test/unit/*.test.ts\" \"test/api/*.test.ts\"",
+    "test:e2e": "node --test --test-reporter=spec \"test/e2e/*.test.ts\"",
+    "test:docker": "node --test --test-reporter=spec --test-concurrency=1 \"test/integration/*.test.ts\"",
+    "check": "npm run typecheck && npm test",
+    "egress-proxy": "node src/egress-proxy/main.ts",
+    "screenshots": "node scripts/screenshots.ts",
+    "pull-images": "node scripts/pull-images.ts"
+  },
+  "dependencies": {
+    "smol-toml": "^1.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "playwright": "^1.56.0",
+    "typescript": "^6.0.3"
+  }
+}
