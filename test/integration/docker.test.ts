@@ -1,13 +1,13 @@
 /**
  * Real-container tests for the Docker runner. Skipped unless
- * REPORADAR_TEST_DOCKER=1. Configure like production:
+ * UNBOX_TEST_DOCKER=1. Configure like production:
  *
- *   REPORADAR_TEST_DOCKER=1 REPORADAR_DOCKER_RUNTIME=runsc \
- *   REPORADAR_IMAGE_NODE=... REPORADAR_IMAGE_PYTHON=... REPORADAR_IMAGE_GO=... \
+ *   UNBOX_TEST_DOCKER=1 UNBOX_DOCKER_RUNTIME=runsc \
+ *   UNBOX_IMAGE_NODE=... UNBOX_IMAGE_PYTHON=... UNBOX_IMAGE_GO=... \
  *   npm run test:docker
  *
- * With REPORADAR_DOCKER_RUNTIME=runc you must also set
- * REPORADAR_ALLOW_UNSAFE_LOCAL_RUNNER (development only).
+ * With UNBOX_DOCKER_RUNTIME=runc you must also set
+ * UNBOX_ALLOW_UNSAFE_LOCAL_RUNNER (development only).
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { loadConfig } from '../../src/config.ts';
 import type { Config, Ecosystem } from '../../src/config.ts';
-import { createRunner } from '../../src/runner/factory.ts';
+import { createRunner as createRunnerFactory } from '../../src/runner/factory.ts';
 import type { Runner, ExecuteResult } from '../../src/runner/types.ts';
 import { FixtureGitHubClient } from '../../src/demo/fixtures.ts';
 import { sanitizeArchive } from '../../src/source/archive.ts';
@@ -24,17 +24,23 @@ import type { StepPlan, CheckId } from '../../src/checks/types.ts';
 import { RunLog } from '../../src/runs/logs.ts';
 import { ROOT } from '../helpers/server.ts';
 
-const enabled = process.env.REPORADAR_TEST_DOCKER === '1';
-const skip = enabled ? false : 'set REPORADAR_TEST_DOCKER=1 to run real-container tests';
+const enabled = process.env.UNBOX_TEST_DOCKER === '1';
+const fetchConfigured = Boolean(process.env.UNBOX_FETCH_NETWORK && process.env.UNBOX_FETCH_PROXY_URL);
+const skip = enabled ? false : 'set UNBOX_TEST_DOCKER=1 to run real-container tests';
 const github = new FixtureGitHubClient(path.join(ROOT, 'fixtures', 'demo-repos'));
 const LIM = { maxCompressedBytes: 1e7, maxUncompressedBytes: 1e7, maxFiles: 1000, maxFileBytes: 1e6 };
 
 function cfg(over: Record<string, string> = {}): Config {
-  return loadConfig({ ...process.env, REPORADAR_RUNNER: 'docker', ...over });
+  return loadConfig({ ...process.env, UNBOX_RUNNER: 'docker', ...over });
+}
+
+/** These tests produce the verification record, so they cannot require one. The live gVisor probe still applies. */
+function createRunner(c: Config): Runner {
+  return createRunnerFactory(c, undefined, { skipRecordedVerification: true });
 }
 
 async function fixture(name: string) {
-  const meta = await github.getRepo('reporadar-demo', name);
+  const meta = await github.getRepo('unbox-demo', name);
   const sha = await github.resolveBranch(meta);
   const snap = await sanitizeArchive(await github.downloadArchive(meta, sha), LIM);
   return { snap, detection: detectProject(snap, { goImage: 'golang:1.25' }) };
@@ -68,8 +74,8 @@ function probe(argv: string[]): StepPlan {
 }
 
 function leftovers(): string {
-  const c = execFileSync('docker', ['ps', '-a', '-q', '--filter', 'label=reporadar.managed=1']).toString().trim();
-  const v = execFileSync('docker', ['volume', 'ls', '-q', '--filter', 'label=reporadar.managed=1']).toString().trim();
+  const c = execFileSync('docker', ['ps', '-a', '-q', '--filter', 'label=unbox.managed=1']).toString().trim();
+  const v = execFileSync('docker', ['volume', 'ls', '-q', '--filter', 'label=unbox.managed=1']).toString().trim();
   return `${c}${v}`;
 }
 
@@ -148,7 +154,7 @@ test('timeout kills the whole process tree and removes the sandbox', { skip }, a
     const { spawn } = require('node:child_process');
     for (let i = 0; i < 5; i++) spawn('sleep', ['1000', '${marker}'], { detached: true, stdio: 'ignore' }).unref();
     console.log('spawned'); setInterval(() => {}, 1000);`;
-  const runner = createRunner(cfg({ REPORADAR_CHECK_TIMEOUT_SEC: '10' }));
+  const runner = createRunner(cfg({ UNBOX_CHECK_TIMEOUT_SEC: '10' }));
   const start = Date.now();
   const { res, text } = await exec(runner, 'node', [probe(['node', '-e', script])], nodeSource);
   assert.equal(res.outcome, 'timed_out', text);
@@ -177,7 +183,7 @@ test('cancellation stops a running sandbox', { skip }, async () => {
 });
 
 test('memory, process and workspace limits are enforced outside the process', { skip }, async () => {
-  const runner = createRunner(cfg({ REPORADAR_RUN_MEMORY_MB: '256', REPORADAR_RUN_PIDS: '64', REPORADAR_RUN_WORKSPACE_MB: '64' }));
+  const runner = createRunner(cfg({ UNBOX_RUN_MEMORY_MB: '256', UNBOX_RUN_PIDS: '64', UNBOX_RUN_WORKSPACE_MB: '64' }));
   const mem = await exec(runner, 'node', [probe(['node', '-e', 'const a = []; for (;;) a.push(Buffer.alloc(16 * 1024 * 1024, 1));'])], nodeSource);
   assert.equal(mem.res.outcome, 'failed');
   assert.ok(mem.res.exitCode === 137 || mem.res.exitCode === 134, `exit ${mem.res.exitCode}`);
@@ -216,7 +222,7 @@ test('huge output is capped while streaming and the run still completes', { skip
 });
 
 test('fails closed when the configured runtime is missing', { skip }, async () => {
-  const status = await createRunner(cfg({ REPORADAR_DOCKER_RUNTIME: 'runsc' })).status(true);
+  const status = await createRunner(cfg({ UNBOX_DOCKER_RUNTIME: 'runsc' })).status(true);
   const hasRunsc = execFileSync('docker', ['info', '--format', '{{json .Runtimes}}']).toString().includes('"runsc"');
   if (!hasRunsc) {
     assert.equal(status.available, false);
@@ -224,4 +230,106 @@ test('fails closed when the configured runtime is missing', { skip }, async () =
   } else {
     assert.equal(status.available, true);
   }
+});
+
+// ---------------------------------------------------------------- isolation
+
+test('host isolation: gVisor kernel, no host mounts or devices, private hostname', { skip }, async () => {
+  const script = `
+    const fs = require('node:fs'); const cp = require('node:child_process'); const os = require('node:os');
+    const out = {};
+    try { out.dmesg = cp.execFileSync('dmesg').toString().slice(0, 2000); } catch (e) { out.dmesg = 'ERR ' + e.code; }
+    out.mounts = fs.readFileSync('/proc/self/mountinfo', 'utf8').split('\\n').map((l) => l.split(' ')[4]).filter(Boolean);
+    out.hostname = os.hostname();
+    out.devices = fs.readdirSync('/dev');
+    out.home = ['/Users', '/home', '/root'].filter((d) => { try { return fs.readdirSync(d).length > 0; } catch { return false; } });
+    console.log('ISO' + 'LATION ' + JSON.stringify(out));`;
+  const { res, text } = await exec(createRunner(cfg()), 'node', [probe(['node', '-e', script])], nodeSource);
+  assert.equal(res.outcome, 'succeeded', text);
+  const data = JSON.parse(/^ISOLATION (.*)$/m.exec(text)?.[1] ?? '{}');
+  if (cfg().runner.runtime === 'runsc') assert.match(data.dmesg, /gVisor/, 'kernel is gVisor, not the host kernel');
+  assert.equal(data.hostname, 'sandbox');
+  for (const m of data.mounts as string[]) assert.ok(!/^\/(Users|home|root|etc\/docker|var\/run)(\/|$)/.test(m), `unexpected mount ${m}`);
+  assert.deepEqual(data.home, [], 'no host home directories are visible');
+  for (const d of ['sda', 'nvme0', 'kvm', 'mem', 'kmsg']) assert.ok(!(data.devices as string[]).includes(d), `device ${d} visible`);
+});
+
+test('network: no DNS, no public, private, link-local or metadata addresses during checks', { skip }, async () => {
+  const script = `
+    const net = require('node:net'); const dns = require('node:dns');
+    const tryConnect = (host, port) => new Promise((r) => {
+      const s = net.connect({ host, port, timeout: 2000 });
+      s.on('connect', () => { s.destroy(); r('connected'); });
+      s.on('error', (e) => r(e.code)); s.on('timeout', () => { s.destroy(); r('timeout'); });
+    });
+    const targets = [['1.1.1.1', 53], ['8.8.8.8', 443], ['169.254.169.254', 80], ['100.100.100.200', 80], ['10.0.0.1', 80], ['172.17.0.1', 2375], ['192.168.1.1', 80], ['fd00::1', 80]];
+    Promise.all([
+      new Promise((r) => dns.lookup('registry.npmjs.org', (e) => r(e ? e.code : 'resolved'))),
+      ...targets.map(([h, p]) => tryConnect(h, p)),
+    ]).then((r) => console.log('NET ' + JSON.stringify(r)));`;
+  const { res, text } = await exec(createRunner(cfg()), 'node', [probe(['node', '-e', script])], nodeSource);
+  assert.equal(res.outcome, 'succeeded', text);
+  const results = JSON.parse(/^NET (.*)$/m.exec(text)?.[1] ?? '[]') as string[];
+  assert.equal(results.length, 9);
+  assert.notEqual(results[0], 'resolved', 'DNS must not resolve');
+  for (const r of results.slice(1)) assert.notEqual(r, 'connected');
+});
+
+test('cleanup after a failed check leaves nothing behind', { skip }, async () => {
+  const { res } = await runCheck('node-failing', 'node.npm-test');
+  assert.equal(res.outcome, 'failed');
+  assert.equal(res.cleanup, 'confirmed');
+  assert.equal(leftovers(), '');
+});
+
+test('cleanup after a crash: the sweeper removes orphaned sandboxes', { skip }, async () => {
+  const c = cfg();
+  const tag = 'feedfacecafe0000';
+  // Simulate what a server crash leaves behind: a labelled, idle sandbox container and volume.
+  execFileSync('docker', ['volume', 'create', '--label', 'unbox.managed=1', '--label', `unbox.run=${tag}`, `unbox-${tag}`]);
+  execFileSync('docker', ['run', '-d', '--name', `unbox-${tag}-s0`, '--label', 'unbox.managed=1', '--label', `unbox.run=${tag}`, '--runtime', c.runner.runtime, '--network', 'none', '--pull', 'never', '--entrypoint', 'sleep', c.runner.images.node, '300']);
+  assert.notEqual(leftovers(), '');
+  await createRunner(c).sweep?.();
+  assert.equal(leftovers(), '');
+});
+
+test('missing image: the ecosystem is reported unavailable and nothing runs', { skip }, async () => {
+  const c = cfg({ UNBOX_IMAGE_NODE: 'unboxanyrepo-test-missing-image:0' });
+  const runner = createRunner(c);
+  const status = await runner.status(true);
+  assert.equal(status.ecosystems.node.available, false);
+  const { res } = await exec(runner, 'node', [probe(['node', '-e', 'console.log(1)'])], nodeSource);
+  assert.equal(res.outcome, 'unavailable');
+  assert.equal(leftovers(), '');
+});
+
+test('concurrent runs get separate workspaces', { skip }, async () => {
+  const script = (id: string) => `const fs = require('node:fs'); fs.writeFileSync('/work/marker-${id}', '${id}'); setTimeout(() => console.log('SEES ' + JSON.stringify(fs.readdirSync('/work').filter((f) => f.startsWith('marker-')))), 1500);`;
+  const runner = createRunner(cfg());
+  const [a, b] = await Promise.all([
+    exec(runner, 'node', [probe(['node', '-e', script('a')])], nodeSource),
+    exec(runner, 'node', [probe(['node', '-e', script('b')])], nodeSource),
+  ]);
+  assert.equal(a.res.outcome, 'succeeded', a.text);
+  assert.equal(b.res.outcome, 'succeeded', b.text);
+  assert.deepEqual(JSON.parse(/^SEES (.*)$/m.exec(a.text)?.[1] ?? '[]'), ['marker-a']);
+  assert.deepEqual(JSON.parse(/^SEES (.*)$/m.exec(b.text)?.[1] ?? '[]'), ['marker-b']);
+  assert.equal(leftovers(), '');
+});
+
+test('[optional] install network: only the egress proxy is reachable, and it allows only registries', { skip: skip || (fetchConfigured ? false : 'UNBOX_FETCH_NETWORK/UNBOX_FETCH_PROXY_URL not configured (BLOCKED)') }, async () => {
+  const script = `
+    const net = require('node:net'); const http = require('node:http');
+    const proxy = new URL(process.env.HTTPS_PROXY);
+    const direct = new Promise((r) => { const s = net.connect({ host: '1.1.1.1', port: 443, timeout: 3000 }); s.on('connect', () => { s.destroy(); r('connected'); }); s.on('error', (e) => r(e.code)); s.on('timeout', () => { s.destroy(); r('timeout'); }); });
+    const connect = (target) => new Promise((r) => { const req = http.request({ host: proxy.hostname, port: proxy.port, method: 'CONNECT', path: target, timeout: 8000 }); req.on('connect', (res, sock) => { sock.destroy(); r(res.statusCode); }); req.on('error', (e) => r(e.code)); req.on('timeout', () => { req.destroy(); r('timeout'); }); req.end(); });
+    Promise.all([direct, connect('example.com:443'), connect('169.254.169.254:80'), connect('registry.npmjs.org:443')]).then((x) => console.log('EGRESS ' + JSON.stringify(x)));`;
+  const step: StepPlan = { kind: 'install', title: 'egress probe', argv: ['node', '-e', script], env: { HOME: '/work/.home' }, network: 'registry-proxy' };
+  const { res, text } = await exec(createRunner(cfg()), 'node', [step], nodeSource);
+  assert.equal(res.outcome, 'succeeded', text);
+  const [direct, other, metadata, registry] = JSON.parse(/^EGRESS (.*)$/m.exec(text)?.[1] ?? '[]');
+  assert.notEqual(direct, 'connected', 'no direct internet route');
+  assert.equal(other, 403);
+  assert.equal(metadata, 403);
+  assert.equal(registry, 200);
 });

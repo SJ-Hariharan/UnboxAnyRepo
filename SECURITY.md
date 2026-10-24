@@ -1,6 +1,6 @@
 # Security policy
 
-RepoRadar runs untrusted code by design, so we take reports about its isolation and input handling seriously.
+UnboxAnyRepo reads untrusted repositories, serves previews of untrusted web pages and, on verified sandbox hosts, runs untrusted code. We take reports about its isolation and input handling seriously.
 
 ## Reporting a vulnerability
 
@@ -22,14 +22,20 @@ In scope:
 - archive handling that writes, reads or reveals anything outside the intended snapshot;
 - executing commands other than the allowlisted templates, or bypassing the confirmation step;
 - leaking secrets, host paths or infrastructure details through the API or logs;
-- cross-site scripting or CSRF in the web UI.
+- cross-site scripting or CSRF in the web UI;
+- a preview page reading or acting on UnboxAnyRepo's cookies, storage, API or other previews;
+- secrets or environment values appearing unredacted in results, reports or logs;
+- content in an analysed repository that makes the server execute it, write outside the scanner temp directory, or exhaust memory despite the limits;
+- execution being enabled without a passing gVisor probe and verification record.
 
 Out of scope:
 
 - a repository's own tests behaving maliciously **inside** the sandbox (that is expected; tell us if it escapes);
 - denial of service that only needs volume (use the documented rate limits and a reverse proxy);
-- findings that require running the documented unsafe `runc` development mode.
+- findings that require running the documented unsafe `runc` development mode;
+- missed detections or false positives in the security analysis (open a normal issue; static analysis is incomplete by design);
+- a previewed page behaving maliciously **within its own sandboxed origin** (that is expected).
 
 ## Deployment responsibilities
 
-RepoRadar's guarantees depend on the deployment described in `docs/DEPLOYMENT.md`: gVisor, a dedicated sandbox host without credentials, network-layer egress rules, and pinned images. Please read `docs/THREAT_MODEL.md` for the residual risks.
+UnboxAnyRepo's guarantees depend on the deployment described in `docs/DEPLOYMENT.md`: gVisor, a dedicated sandbox host without credentials, network-layer egress rules, and pinned images. Please read `docs/THREAT_MODEL.md` for the residual risks.

@@ -13,13 +13,14 @@ export class HttpError extends Error {
   }
 }
 
-export const SESSION_COOKIE = 'rr_sid';
+export const SESSION_COOKIE = 'uar_sid';
 const SESSION_RE = /^[A-Za-z0-9_-]{43}$/;
 
-export function securityHeaders(res: ServerResponse): void {
+/** `frameSrc`: extra origins the UI may embed (the preview domain). */
+export function securityHeaders(res: ServerResponse, frameSrc = ''): void {
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; frame-src 'self'${frameSrc ? ` ${frameSrc}` : ''}; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');

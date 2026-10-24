@@ -12,8 +12,8 @@ import { gz, buildTar } from '../helpers/tarbuilder.ts';
 const IMAGES = ['node:24-bookworm-slim', 'python:3.13-slim-bookworm', 'golang:1.25-bookworm', 'rust:1-slim-bookworm'];
 
 function runner(fake: FakeDocker, env: Record<string, string> = {}, limits = {}) {
-  const cfg = testConfig({ REPORADAR_RUNNER: 'docker', ...env });
-  return new DockerRunner({ config: cfg.runner, limits: testLimits(limits), isolation: 'strong', exec: fake, statusTtlMs: 0 });
+  const cfg = testConfig({ UNBOX_RUNNER: 'docker', ...env });
+  return new DockerRunner({ config: cfg.runner, limits: testLimits(limits), isolation: 'strong', exec: fake, statusTtlMs: 0, verification: { required: false } });
 }
 
 const CHECK: StepPlan = { kind: 'check', title: 'npm test', argv: ['npm', 'test'], env: { HOME: '/work/.home' }, network: 'none' };
@@ -37,12 +37,12 @@ function request(steps: StepPlan[], signal = new AbortController().signal) {
 
 test('docker run arguments always carry the hardening flags', () => {
   const args = buildRunArgs({
-    name: 'reporadar-0123456789abcdef-s0',
+    name: 'unbox-0123456789abcdef-s0',
     tag: '0123456789abcdef',
     runtime: 'runsc',
     image: 'node:24',
     network: 'none',
-    volume: 'reporadar-0123456789abcdef',
+    volume: 'unbox-0123456789abcdef',
     argv: ['npm', 'test'],
     env: { HOME: '/work/.home' },
     workdir: '/work/src',
@@ -68,18 +68,21 @@ test('docker run arguments always carry the hardening flags', () => {
 
 test('factory fails closed', async () => {
   assert.ok(createRunner(testConfig()) instanceof DisabledRunner);
-  assert.ok(createRunner(testConfig({ REPORADAR_RUNNER: 'docker', REPORADAR_DOCKER_RUNTIME: 'runc' })) instanceof DisabledRunner);
+  assert.ok(createRunner(testConfig({ UNBOX_RUNNER: 'docker', UNBOX_DOCKER_RUNTIME: 'runc' })) instanceof DisabledRunner);
   const prod = createRunner(
-    testConfig({ NODE_ENV: 'production', REPORADAR_RUNNER: 'docker', REPORADAR_DOCKER_RUNTIME: 'runc', REPORADAR_ALLOW_UNSAFE_LOCAL_RUNNER: UNSAFE_LOCAL_ACK }),
+    testConfig({ NODE_ENV: 'production', UNBOX_RUNNER: 'docker', UNBOX_DOCKER_RUNTIME: 'runc', UNBOX_ALLOW_UNSAFE_LOCAL_RUNNER: UNSAFE_LOCAL_ACK }),
   );
   assert.ok(prod instanceof DisabledRunner);
   const unsafe = createRunner(
-    testConfig({ REPORADAR_RUNNER: 'docker', REPORADAR_DOCKER_RUNTIME: 'runc', REPORADAR_ALLOW_UNSAFE_LOCAL_RUNNER: UNSAFE_LOCAL_ACK }),
+    testConfig({ UNBOX_RUNNER: 'docker', UNBOX_DOCKER_RUNTIME: 'runc', UNBOX_ALLOW_UNSAFE_LOCAL_RUNNER: UNSAFE_LOCAL_ACK }),
     new FakeDocker({ images: IMAGES }),
   );
   assert.equal((await unsafe.status()).isolation, 'unsafe-local');
-  const strong = createRunner(testConfig({ REPORADAR_RUNNER: 'docker' }), new FakeDocker({ images: IMAGES }));
-  assert.equal((await strong.status()).isolation, 'strong');
+  const strong = createRunner(testConfig({ UNBOX_RUNNER: 'docker' }), new FakeDocker({ images: IMAGES }));
+  const st = await strong.status();
+  assert.equal(st.isolation, 'strong');
+  assert.equal(st.available, false, 'gVisor alone is not enough: the sandbox must have been verified');
+  assert.match(st.reason ?? '', /npm run sandbox -- --verify/);
   const disabled = await new DisabledRunner('off').execute();
   assert.equal(disabled.outcome, 'unavailable');
 });
@@ -97,11 +100,11 @@ test('status: unavailable without gVisor, unreachable host, or images; fetch nee
   assert.equal(s.ecosystems.node.available, true);
   assert.equal(s.ecosystems.rust.available, false);
   assert.equal(s.dependencyFetch, false);
-  const fetchEnv = { REPORADAR_FETCH_NETWORK: 'rr-fetch', REPORADAR_FETCH_PROXY_URL: 'http://rr-egress:3128' };
-  s = await runner(new FakeDocker({ images: IMAGES, networks: { 'rr-fetch': { internal: false } } }), fetchEnv).status();
+  const fetchEnv = { UNBOX_FETCH_NETWORK: 'unbox-fetch', UNBOX_FETCH_PROXY_URL: 'http://unbox-egress:3128' };
+  s = await runner(new FakeDocker({ images: IMAGES, networks: { 'unbox-fetch': { internal: false } } }), fetchEnv).status();
   assert.equal(s.dependencyFetch, false);
   assert.match(s.dependencyFetchReason ?? '', /not an internal network/);
-  s = await runner(new FakeDocker({ images: IMAGES, networks: { 'rr-fetch': { internal: true } } }), fetchEnv).status();
+  s = await runner(new FakeDocker({ images: IMAGES, networks: { 'unbox-fetch': { internal: true } } }), fetchEnv).status();
   assert.equal(s.dependencyFetch, true);
 });
 
@@ -158,13 +161,13 @@ test('cancellation stops the sandbox and reports cancelled', async () => {
 });
 
 test('install steps use the internal registry network and proxy; refused when not configured', async () => {
-  const fetchEnv = { REPORADAR_FETCH_NETWORK: 'rr-fetch', REPORADAR_FETCH_PROXY_URL: 'http://rr-egress:3128' };
-  const fake = new FakeDocker({ images: IMAGES, networks: { 'rr-fetch': { internal: true } } });
+  const fetchEnv = { UNBOX_FETCH_NETWORK: 'unbox-fetch', UNBOX_FETCH_PROXY_URL: 'http://unbox-egress:3128' };
+  const fake = new FakeDocker({ images: IMAGES, networks: { 'unbox-fetch': { internal: true } } });
   const res = await runner(fake, fetchEnv).execute(request([INSTALL, CHECK]).req);
   assert.equal(res.outcome, 'succeeded');
   const [install, check] = fake.stepRuns();
-  assert.equal(install?.[install.indexOf('--network') + 1], 'rr-fetch');
-  assert.ok(install?.includes('HTTPS_PROXY=http://rr-egress:3128'));
+  assert.equal(install?.[install.indexOf('--network') + 1], 'unbox-fetch');
+  assert.ok(install?.includes('HTTPS_PROXY=http://unbox-egress:3128'));
   assert.equal(check?.[check.indexOf('--network') + 1], 'none');
   assert.ok(!check?.some((a) => a.startsWith('HTTPS_PROXY')));
 
@@ -195,16 +198,16 @@ test('sweep removes stale sandboxes but never ones in flight', async () => {
   const fake = new FakeDocker({
     images: IMAGES,
     steps: { 'npm test': { hang: true } },
-    containers: [{ name: `reporadar-${stale}-s0`, tag: stale }, { name: 'unrelated', tag: '' }],
-    volumes: [`reporadar-${stale}`, 'someone-elses-volume'],
+    containers: [{ name: `unbox-${stale}-s0`, tag: stale }, { name: 'unrelated', tag: '' }],
+    volumes: [`unbox-${stale}`, 'someone-elses-volume'],
   });
   const r = runner(fake, {}, { checkTimeoutSec: 2 });
   const ac = new AbortController();
   const running = r.execute(request([CHECK], ac.signal).req);
   await new Promise((res) => setTimeout(res, 100));
   await r.sweep();
-  assert.ok(!fake.containers.has(`reporadar-${stale}-s0`));
-  assert.ok(!fake.volumes.has(`reporadar-${stale}`));
+  assert.ok(!fake.containers.has(`unbox-${stale}-s0`));
+  assert.ok(!fake.volumes.has(`unbox-${stale}`));
   assert.ok(fake.containers.has('unrelated'));
   assert.ok(fake.volumes.has('someone-elses-volume'));
   assert.ok([...fake.containers.keys()].some((n) => n.endsWith('-s0') && !n.includes(stale)), 'active run untouched');

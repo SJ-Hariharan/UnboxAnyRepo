@@ -36,7 +36,12 @@ export class DisabledRunner implements Runner {
   }
 }
 
-export function createRunner(config: Config, exec?: CommandExecutor): Runner {
+/**
+ * `skipRecordedVerification` exists only for the verification command and the
+ * real-container tests it runs (they produce the record). It cannot be set
+ * from the environment. The live gVisor probe still applies.
+ */
+export function createRunner(config: Config, exec?: CommandExecutor, opts: { skipRecordedVerification?: boolean } = {}): Runner {
   const r = config.runner;
   if (r.mode === 'disabled') {
     return new DisabledRunner('Execution is disabled on this deployment. You can still inspect repositories and review the planned checks.');
@@ -44,7 +49,7 @@ export function createRunner(config: Config, exec?: CommandExecutor): Runner {
   if (r.runtime === 'runc') {
     if (!r.unsafeLocalAcknowledged) {
       return new DisabledRunner(
-        'The runc runtime is not a strong sandbox. It is only allowed for local development with REPORADAR_ALLOW_UNSAFE_LOCAL_RUNNER set.',
+        'The runc runtime is not a strong sandbox. It is only allowed for local development with UNBOX_ALLOW_UNSAFE_LOCAL_RUNNER set.',
       );
     }
     if (config.production) {
@@ -57,5 +62,9 @@ export function createRunner(config: Config, exec?: CommandExecutor): Runner {
     limits: config.limits,
     isolation: r.runtime === 'runsc' ? 'strong' : 'unsafe-local',
     exec: executor,
+    verification:
+      r.runtime === 'runsc' && !opts.skipRecordedVerification
+        ? { required: true, file: config.sandboxVerification.file, maxAgeDays: config.sandboxVerification.maxAgeDays }
+        : { required: false },
   });
 }

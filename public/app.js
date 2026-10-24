@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * RepoRadar client. Plain DOM, no framework.
+ * UnboxAnyRepo client. Plain DOM, no framework.
  * Every piece of text that originates from a repository, GitHub or the sandbox
  * is inserted with textContent / createTextNode. innerHTML is never used.
  */
@@ -9,12 +9,12 @@
 /** @typedef {{ source: string, text: string }} RepoScript */
 /** @typedef {{ id: string, ecosystem: string, title: string, summary: string, executes: string, repoScripts: RepoScript[], notes: string[], installsDependencies: boolean, steps: Step[], detected: boolean, runnable: boolean, blockedReason?: string }} Check */
 /** @typedef {{ available: boolean, isolation: string, label: string, reason?: string, dependencyFetch: boolean, dependencyFetchReason?: string, limits?: { cpus: number, memoryMiB: number, pids: number, workspaceMiB: number, installTimeoutSec: number, checkTimeoutSec: number } }} Runner */
-/** @typedef {{ id: string, demo: boolean, notice?: string, repo: { fullName: string, owner: string, name: string, description: string|null, defaultBranch: string, language: string|null, htmlUrl: string, archived: boolean, fork: boolean }, commit: { sha: string, source: string }, source: { fileCount: number, totalBytes: number, skippedSymlinkCount: number, skippedSymlinks: string[] }, detection: { status: string, ecosystems: { ecosystem: string, label: string, confidence: string, evidence: string[], notes: string[] }[], warnings: string[], unsupportedSignals: string[] }, checks: Check[], runner: Runner }} Inspection */
+/** @typedef {{ id: string, demo: boolean, notice?: string, repo: { fullName: string, owner: string, name: string, description: string|null, defaultBranch: string, language: string|null, htmlUrl: string, archived: boolean, fork: boolean }, commit: { sha: string, source: string }, source: { fileCount: number, totalBytes: number, skippedSymlinkCount: number, skippedSymlinks: string[] }, detection: { status: string, ecosystems: { ecosystem: string, label: string, confidence: string, evidence: string[], notes: string[] }[], warnings: string[], unsupportedSignals: string[] }, checks: Check[], runner: Runner, analysis: any }} Inspection */
 /** @typedef {{ seq: number, kind: string, text: string }} LogLine */
-/** @typedef {{ id: string, state: string, terminal: boolean, repo: { fullName: string, htmlUrl: string }, commitSha: string, demo: boolean, check: { id: string, title: string, ecosystem: string, installsDependencies: boolean }, steps: Step[], createdAt: string, startedAt?: string, finishedAt?: string, durationMs?: number, queuePosition?: number, exitCode?: number, failedStep?: string, message?: string, cleanup?: string, isolation: string, runnerLabel: string, cancelRequested: boolean, log: { truncated: boolean, receivedBytes: number }, nextSteps: string[] }} Run */
+/** @typedef {{ id: string, state: string, terminal: boolean, repo: { fullName: string, htmlUrl: string }, commitSha: string, demo: boolean, check: { id: string, title: string, ecosystem: string, installsDependencies: boolean }, steps: Step[], createdAt: string, startedAt?: string, finishedAt?: string, durationMs?: number, queuePosition?: number, exitCode?: number, failedStep?: string, message?: string, cleanup?: string, isolation: string, runnerLabel: string, cancelRequested: boolean, log: { truncated: boolean, receivedBytes: number }, nextSteps: string[], preview?: { requested: boolean, token?: string, error?: string } }} Run */
 
-/** @type {{ config: any, inspection: Inspection|null, selected: Check|null, run: Run|null, lastSeq: number, source: EventSource|null, poll: number|null, timer: number|null, history: Run[] }} */
-const state = { config: null, inspection: null, selected: null, run: null, lastSeq: 0, source: null, poll: null, timer: null, history: [] };
+/** @type {{ config: any, inspection: Inspection|null, selected: Check|null, run: Run|null, lastSeq: number, source: EventSource|null, poll: number|null, timer: number|null, history: Run[], filter: { severity: string, status: string, showAll: boolean }, preview: any }} */
+const state = { config: null, inspection: null, selected: null, run: null, lastSeq: 0, source: null, poll: null, timer: null, history: [], filter: { severity: 'all', status: 'all', showAll: false }, preview: null };
 
 /** @param {string} id */
 function $(id) {
@@ -157,6 +157,7 @@ async function loadConfig() {
   }
   examples.hidden = (cfg.examples ?? []).length === 0;
   $('supported-list').textContent = cfg.supported.map((/** @type {any} */ s) => `${s.label} (${s.checks.join(', ')})`).join('; ');
+  $('app-version').textContent = cfg.brand?.version ?? '';
 }
 
 /** @param {string} kind @param {string} text */
@@ -186,6 +187,9 @@ async function onInspect(/** @type {SubmitEvent} */ ev) {
   btn.textContent = 'Inspecting…';
   $('inspect-loading').hidden = false;
   $('inspection').hidden = true;
+  const started = Date.now();
+  const tick = window.setInterval(() => ($('inspect-elapsed').textContent = `${duration(Date.now() - started)} elapsed`), 1000);
+  $('inspect-elapsed').textContent = '';
   try {
     const insp = /** @type {Inspection} */ (await api('/api/inspect', { method: 'POST', body: { url } }));
     state.inspection = insp;
@@ -199,6 +203,7 @@ async function onInspect(/** @type {SubmitEvent} */ ev) {
     input.setAttribute('aria-invalid', 'true');
     input.focus();
   } finally {
+    clearInterval(tick);
     btn.disabled = false;
     btn.textContent = 'Inspect';
     $('inspect-loading').hidden = true;
@@ -253,6 +258,9 @@ function renderInspection(insp) {
   renderDetection(insp);
   renderChecks(insp);
   $('confirm-box').hidden = true;
+  state.preview = null;
+  state.filter = { severity: 'all', status: 'all', showAll: false };
+  renderAnalysis(insp);
 }
 
 /** @param {string} text @param {string} label */
@@ -368,6 +376,9 @@ function selectCheck(c) {
     'I understand this check downloads dependencies from public package registries first. Install scripts are disabled, but downloaded packages are also untrusted code.';
   /** @type {HTMLInputElement} */ ($('ack-code')).checked = false;
   /** @type {HTMLInputElement} */ ($('ack-install')).checked = false;
+  const pv = insp.analysis?.launch?.preview;
+  $('ack-preview-row').hidden = !(pv && pv.kind === 'build' && pv.buildCheckId === c.id && state.config?.features?.previews);
+  /** @type {HTMLInputElement} */ ($('ack-preview')).checked = !$('ack-preview-row').hidden;
   $('run-error').hidden = true;
   $('confirm-box').hidden = false;
   updateStartButton();
@@ -398,7 +409,8 @@ async function onStart(/** @type {SubmitEvent} */ ev) {
   btn.disabled = true;
   $('run-error').hidden = true;
   try {
-    const { run } = await api('/api/runs', { method: 'POST', body: { inspectionId: insp.id, checkId: c.id, acknowledged: true } });
+    const wantPreview = !$('ack-preview-row').hidden && /** @type {HTMLInputElement} */ ($('ack-preview')).checked;
+    const { run } = await api('/api/runs', { method: 'POST', body: { inspectionId: insp.id, checkId: c.id, acknowledged: true, ...(wantPreview ? { preview: true } : {}) } });
     showRun(run, []);
     follow(run);
     await refreshHistory();
@@ -490,7 +502,10 @@ function renderRun(run) {
       run.message ? h('p', {}, [run.message]) : null,
       h('dl', {}, dl.map(([k, v]) => h('div', {}, [h('dt', {}, [k]), h('dd', {}, [v])]))),
       run.nextSteps.length ? h('ul', {}, run.nextSteps.map((s) => h('li', {}, [s]))) : null,
+      run.preview?.token ? h('p', {}, [h('a', { href: `/preview/${run.preview.token}/`, target: '_blank', rel: 'noopener noreferrer' }, ['Open the build preview'])]) : null,
+      run.preview?.error ? h('p', { class: 'blocked' }, [`Preview not created: ${run.preview.error}`]) : null,
     );
+    if (run.preview?.token && state.inspection) void loadPreviews();
     result.hidden = false;
   } else {
     result.hidden = true;
@@ -609,6 +624,349 @@ async function onCopyLog() {
     status.textContent = 'Could not copy the log. Use Download instead.';
   }
   setTimeout(() => (btn.textContent = 'Copy log'), 1500);
+}
+
+// ------------------------------------------------------------------ analysis
+
+const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
+const STATUS_HELP = /** @type {Record<string,string>} */ ({
+  confirmed: 'Established directly from the files or advisory data.',
+  heuristic: 'A pattern matched. It may be a false positive and needs review.',
+  informational: 'Worth knowing, not a vulnerability by itself.',
+  unverified: 'Could be real, but could not be confirmed (for example a secret that was never tested).',
+});
+const TOOL_STATE = /** @type {Record<string,string>} */ ({ ran: 'Ran', not_installed: 'Not installed', disabled: 'Disabled', failed: 'Failed', timed_out: 'Timed out', skipped: 'Skipped' });
+
+/** A link only for absolute https URLs; anything else is shown as text. @param {string} url @param {string} [label] */
+function safeLink(url, label) {
+  if (/^https:\/\/[^\s"<>]+$/.test(url)) return h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, [label ?? url.replace(/^https:\/\//, '')]);
+  return h('span', {}, [label ?? url]);
+}
+
+/** @param {string} title @param {(Node|string|null|undefined|false)[]} kids @param {string} [cls] */
+function panel(title, kids, cls = '') {
+  return h('section', { class: `panel ${cls}` }, [h('h3', {}, [title]), ...kids]);
+}
+
+/** @param {string[][]} rows */
+function dl(rows) {
+  return h('dl', { class: 'facts' }, rows.map(([k, v]) => h('div', {}, [h('dt', {}, [k ?? '']), h('dd', {}, [v ?? ''])])));
+}
+
+/** @param {string[]} cmds */
+function commandBlock(cmds) {
+  const text = cmds.join('\n');
+  return h('div', { class: 'cmd-block' }, [h('pre', { class: 'cmd' }, [h('code', {}, [text])]), copyButton(text, 'Copy')]);
+}
+
+/** @param {Inspection} insp */
+function renderAnalysis(insp) {
+  const a = insp.analysis;
+  if (!a) return;
+  renderOverview(insp, a);
+  renderSecurity(a);
+  renderDeps(a);
+  renderConfig(a);
+  renderSetup(a);
+  renderPreview(insp, a);
+  renderTests(a);
+  renderReport(insp, a);
+}
+
+/** @param {Inspection} insp @param {any} a */
+function renderOverview(insp, a) {
+  const langs = a.structure.languages;
+  const bar = h('div', { class: 'lang-bar', role: 'img', 'aria-label': langs.map((/** @type {any} */ l) => `${l.name} ${l.percent}%`).join(', ') || 'No source languages detected' },
+    langs.slice(0, 8).map((/** @type {any} */ l, /** @type {number} */ i) => {
+      const seg = h('span', { class: `seg seg-${i}`, title: `${l.name} ${l.percent}%` });
+      seg.style.flexGrow = String(Math.max(l.percent, 0.5));
+      return seg;
+    }));
+  const cov = a.coverage;
+  fill($('overview'),
+    panel('Project', [
+      h('p', { class: 'kind' }, [a.launch.summary]),
+      a.stack.length ? h('ul', { class: 'chips', 'aria-label': 'Technology stack' }, a.stack.map((/** @type {any} */ s) => h('li', { class: `chip chip-${s.kind}`, title: s.evidence }, [s.name, s.version ? h('span', { class: 'chip-v' }, [s.version]) : null]))) : h('p', { class: 'muted' }, ['No frameworks or runtimes identified from manifests.']),
+      a.packageManagers.length ? h('p', { class: 'muted' }, [`Package manager${a.packageManagers.length > 1 ? 's' : ''}: ${a.packageManagers.map((/** @type {any} */ p) => `${p.name}${p.lockfile ? ` (${p.lockfile})` : ' (no lockfile)'}`).join(', ')}`]) : null,
+    ]),
+    panel('Languages', [bar, h('ul', { class: 'legend' }, langs.slice(0, 8).map((/** @type {any} */ l, /** @type {number} */ i) => h('li', {}, [h('span', { class: `swatch seg-${i}`, 'aria-hidden': 'true' }), `${l.name} ${l.percent}%`])))]),
+    panel('Structure', [
+      h('p', { class: 'muted' }, [`${a.structure.fileCount.toLocaleString()} files in ${a.structure.dirCount.toLocaleString()} folders.`]),
+      h('ul', { class: 'tree' }, a.structure.topLevel.slice(0, 16).map((/** @type {any} */ t) => h('li', { 'data-kind': t.kind }, [t.kind === 'dir' ? `${t.name}/` : t.name, t.kind === 'dir' ? h('span', { class: 'muted' }, [` ${t.files}`]) : null]))),
+      a.structure.entryPoints.length ? h('details', {}, [h('summary', {}, [`Likely entry points (${a.structure.entryPoints.length})`]), h('ul', {}, a.structure.entryPoints.map((/** @type {any} */ e) => h('li', {}, [h('code', {}, [e.path]), ` — ${e.reason}`])))]) : null,
+    ]),
+    panel('Analysis coverage', [
+      h('p', {}, [`${cov.textFiles.toLocaleString()} text files (${bytes(cov.textBytes)}) were analysed.`]),
+      cov.complete ? h('p', { class: 'muted' }, ['Every eligible text file was analysed.']) : h('p', { class: 'warn' }, [`Partial: ${Object.entries(cov.skipped).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${v} ${k.replace('_', ' ')}`).join(', ')} skipped. Findings may be missing for skipped files.`]),
+    ]),
+  );
+  $('nav-findings').textContent = a.summary.total ? String(a.summary.total) : '';
+}
+
+/** @param {any} a */
+function renderSecurity(a) {
+  $('disclaimer').textContent = a.disclaimer;
+  fill($('security-summary'),
+    ...SEVERITIES.map((s) => h('div', { class: 'sev-count', 'data-sev': s }, [h('span', { class: 'n' }, [String(a.summary.bySeverity[s])]), h('span', { class: 'l' }, [s])])),
+  );
+  fill($('tools'),
+    h('details', {}, [
+      h('summary', {}, [`Checks performed: ${a.tools.filter((/** @type {any} */ t) => t.state === 'ran').map((/** @type {any} */ t) => t.tool).join(', ') || 'none'}`]),
+      h('table', { class: 'table' }, [
+        h('thead', {}, [h('tr', {}, [h('th', { scope: 'col' }, ['Tool']), h('th', { scope: 'col' }, ['Result']), h('th', { scope: 'col', title: 'Before duplicates are merged and repeated matches in one file are grouped' }, ['Raw matches']), h('th', { scope: 'col' }, ['Notes'])])]),
+        h('tbody', {}, a.tools.map((/** @type {any} */ t) => h('tr', { 'data-state': t.state }, [h('td', {}, [`${t.tool}${t.version ? ` ${t.version}` : ''}`]), h('td', {}, [TOOL_STATE[t.state] ?? t.state]), h('td', {}, [String(t.findings)]), h('td', {}, [t.message ?? (t.durationMs ? `${duration(t.durationMs)}` : '')])]))),
+      ]),
+    ]),
+  );
+  const filters = $('finding-filters');
+  const sevBtns = ['all', ...SEVERITIES].map((s) => {
+    const n = s === 'all' ? a.summary.total : a.summary.bySeverity[s];
+    const b = h('button', { type: 'button', class: 'filter', 'aria-pressed': String(state.filter.severity === s), disabled: s !== 'all' && n === 0 }, [`${s === 'all' ? 'All' : s[0].toUpperCase() + s.slice(1)} (${n})`]);
+    b.addEventListener('click', () => {
+      state.filter.severity = s;
+      state.filter.showAll = false;
+      renderSecurity(a);
+    });
+    return b;
+  });
+  const statusSel = /** @type {HTMLSelectElement} */ (h('select', { id: 'status-filter', 'aria-label': 'Filter by status' }, [
+    h('option', { value: 'all' }, ['Any status']),
+    ...Object.keys(STATUS_HELP).map((s) => h('option', { value: s }, [`${s} (${a.summary.byStatus[s]})`])),
+  ]));
+  statusSel.value = state.filter.status;
+  statusSel.addEventListener('change', () => {
+    state.filter.status = statusSel.value;
+    state.filter.showAll = false;
+    renderSecurity(a);
+  });
+  fill(filters, ...sevBtns, statusSel);
+
+  const list = a.findings.filter((/** @type {any} */ f) => (state.filter.severity === 'all' || f.severity === state.filter.severity) && (state.filter.status === 'all' || f.status === state.filter.status));
+  const box = $('findings');
+  if (a.findings.length === 0) {
+    fill(box, h('div', { class: 'empty-state' }, [h('h3', {}, ['No findings from the checks that ran']), h('p', {}, ['That is not the same as "safe": see which checks ran above, the coverage note, and the limitations in the report.'])]));
+    return;
+  }
+  const shown = state.filter.showAll ? list : list.slice(0, 60);
+  fill(box,
+    list.length === 0 ? h('p', { class: 'muted' }, ['No findings match this filter.']) : null,
+    h('ul', { class: 'finding-list' }, shown.map(renderFinding)),
+    list.length > shown.length ? (() => {
+      const more = h('button', { type: 'button', class: 'btn btn-quiet' }, [`Show all ${list.length} findings`]);
+      more.addEventListener('click', () => {
+        state.filter.showAll = true;
+        renderSecurity(a);
+      });
+      return more;
+    })() : null,
+  );
+}
+
+/** @param {any} f */
+function renderFinding(f) {
+  const loc = f.file ? `${f.file}${f.startLine ? `:${f.startLine}` : ''}` : 'repository';
+  return h('li', { class: 'finding', 'data-sev': f.severity }, [
+    h('details', {}, [
+      h('summary', {}, [
+        h('span', { class: 'sev', 'data-sev': f.severity }, [f.severity]),
+        h('span', { class: 'f-title' }, [f.title]),
+        h('span', { class: 'f-loc' }, [loc]),
+      ]),
+      h('div', { class: 'f-body' }, [
+        dl([
+          ['Status', `${f.status} — ${STATUS_HELP[f.status] ?? ''}`],
+          ['Confidence', f.confidence],
+          ['Detected by', `${f.method}${f.cwe ? ` · ${f.cwe}` : ''}`],
+          ['Identifier', f.id],
+          ...(f.package ? [['Package', `${f.package.ecosystem} ${f.package.name} ${f.package.version}${f.package.fixedIn ? ` → fixed in ${f.package.fixedIn.join(', ')}` : ''}`]] : []),
+        ]),
+        f.evidence ? h('pre', { class: 'evidence' }, [h('code', {}, [f.evidence])]) : null,
+        h('p', {}, [h('strong', {}, ['Risk: ']), f.risk]),
+        h('p', {}, [h('strong', {}, ['Recommendation: ']), f.remediation]),
+        f.references.length ? h('p', { class: 'refs' }, [h('strong', {}, ['References: ']), ...f.references.flatMap((/** @type {string} */ r, /** @type {number} */ i) => [i ? ' · ' : '', safeLink(r)])]) : null,
+      ]),
+    ]),
+  ]);
+}
+
+/** @param {any} a */
+function renderDeps(a) {
+  const d = a.dependencies;
+  const vulns = a.findings.filter((/** @type {any} */ f) => f.category === 'vulnerable-dependency');
+  const osv = a.tools.find((/** @type {any} */ t) => t.tool === 'OSV.dev');
+  fill($('deps'),
+    h('div', { class: 'panel-grid' }, [
+      panel('Manifests and lockfiles', [
+        a.manifests.length ? h('ul', {}, a.manifests.slice(0, 30).map((/** @type {any} */ m) => h('li', {}, [h('code', {}, [m.path]), ` — ${m.kind}`]))) : h('p', { class: 'muted' }, ['No dependency manifests found.']),
+      ]),
+      panel('Inventory', [
+        h('p', {}, [Object.keys(d.byEcosystem).length ? `Exact versions known for ${Object.entries(d.byEcosystem).map(([k, v]) => `${v} ${k}`).join(', ')} packages.` : 'No exact package versions could be determined.']),
+        ...d.notes.map((/** @type {string} */ n) => h('p', { class: 'warn' }, [n])),
+      ]),
+      panel('Known vulnerabilities', [
+        h('p', { class: osv && osv.state === 'ran' ? '' : 'warn' }, [osv ? `OSV.dev: ${TOOL_STATE[osv.state] ?? osv.state}. ${osv.message ?? ''}` : 'Not checked.']),
+        vulns.length ? h('ul', { class: 'finding-list' }, vulns.slice(0, 50).map(renderFinding)) : osv && osv.state === 'ran' ? h('p', { class: 'muted' }, ['No published advisories matched the exact versions checked.']) : null,
+      ]),
+    ]),
+  );
+}
+
+/** @param {any} a */
+function renderConfig(a) {
+  const configFindings = a.findings.filter((/** @type {any} */ f) => ['secret', 'docker', 'ci', 'configuration', 'install-script'].includes(f.category));
+  fill($('config'),
+    h('div', { class: 'panel-grid' }, [
+      panel(`Environment variables (${a.env.length})`, [
+        a.env.length
+          ? h('table', { class: 'table' }, [
+              h('thead', {}, [h('tr', {}, [h('th', { scope: 'col' }, ['Name']), h('th', { scope: 'col' }, ['Documented']), h('th', { scope: 'col' }, ['Seen in'])])]),
+              h('tbody', {}, a.env.slice(0, 60).map((/** @type {any} */ e) => h('tr', {}, [h('td', {}, [h('code', {}, [e.name])]), h('td', {}, [e.documented ? 'yes' : 'no']), h('td', { class: 'muted' }, [e.sources.slice(0, 2).join(', ')])]))),
+            ])
+          : h('p', { class: 'muted' }, ['No environment variables referenced.']),
+        h('p', { class: 'muted small' }, ['Names only. Values are never read into results or reports.']),
+      ]),
+      panel('Containers and CI', [
+        ...a.dockerfiles.map((/** @type {any} */ d) => h('p', {}, [h('code', {}, [d.path]), ` — from ${d.baseImages.join(', ') || '?'}; ${d.exposes.length ? `exposes ${d.exposes.join(', ')}` : 'no EXPOSE'}; user ${d.user ?? 'root (not set)'}`])),
+        ...a.compose.map((/** @type {any} */ c) => h('p', {}, [h('code', {}, [c.path]), ` — services: ${c.services.map((/** @type {any} */ s) => s.name + (s.image ? ` (${s.image})` : '')).join(', ')}`])),
+        ...a.ci.map((/** @type {any} */ c) => h('p', {}, [h('code', {}, [c.path]), ` — ${c.provider}${c.jobs.length ? `, jobs: ${c.jobs.join(', ')}` : ''}`])),
+        a.dockerfiles.length + a.compose.length + a.ci.length === 0 ? h('p', { class: 'muted' }, ['No Dockerfiles, Compose files or CI configuration found.']) : null,
+      ]),
+      panel(`Secrets and configuration warnings (${configFindings.length})`, [
+        configFindings.length ? h('ul', { class: 'finding-list' }, configFindings.slice(0, 40).map(renderFinding)) : h('p', { class: 'muted' }, ['None from the checks that ran.']),
+      ]),
+    ]),
+  );
+}
+
+/** @param {any} a */
+function renderSetup(a) {
+  const l = a.launch;
+  fill($('setup'),
+    h('p', { class: 'kind' }, [l.summary]),
+    ...l.warnings.map((/** @type {string} */ w) => h('p', { class: 'callout' }, [w])),
+    h('ol', { class: 'setup-steps' }, l.steps.map((/** @type {any} */ s) => h('li', {}, [
+      h('h3', {}, [s.title]),
+      s.commands.length ? commandBlock(s.commands) : null,
+      s.note ? h('p', { class: 'muted' }, [s.note]) : null,
+    ]))),
+    h('div', { class: 'panel-grid' }, [
+      panel('Ports', [l.ports.length ? h('ul', {}, l.ports.map((/** @type {any} */ p) => h('li', {}, [h('code', {}, [String(p.port)]), ` — ${p.source}`]))) : h('p', { class: 'muted' }, ['None detected.'])]),
+      panel('Services it needs', [l.services.length ? h('ul', {}, l.services.map((/** @type {any} */ s) => h('li', {}, [`${s.name} — `, h('span', { class: 'muted' }, [s.source])]))) : h('p', { class: 'muted' }, ['None detected.'])]),
+      panel('Compatibility notes', [a.compatibility.length ? h('ul', { class: 'compat' }, a.compatibility.map((/** @type {any} */ c) => h('li', { 'data-level': c.level }, [h('span', { class: 'lvl' }, [c.level]), ` ${c.message}`]))) : h('p', { class: 'muted' }, ['Nothing notable.'])]),
+    ]),
+  );
+}
+
+/** @param {any} a */
+function renderTests(a) {
+  const t = a.tests;
+  fill($('tests-info'),
+    h('p', { class: 'muted' }, [
+      t.frameworks.length ? `Test tooling: ${t.frameworks.join(', ')}. ` : 'No test tooling detected. ',
+      `${t.testFiles} test file${t.testFiles === 1 ? '' : 's'}.`,
+      t.commands.length ? ` Usual commands: ${t.commands.map((/** @type {any} */ c) => c.command).join(', ')}.` : '',
+    ]),
+  );
+}
+
+/** @param {Inspection} insp @param {any} a */
+function renderPreview(insp, a) {
+  const plan = a.launch.preview;
+  const box = $('preview');
+  const enabled = state.config?.features?.previews;
+  if (!enabled) {
+    fill(box, h('p', { class: 'muted' }, ['Previews are disabled on this deployment.']));
+    return;
+  }
+  if (plan.kind === 'static') {
+    const p = state.preview;
+    const running = p && p.state === 'running';
+    const startBtn = running ? null : h('button', { type: 'button', class: 'btn btn-primary', id: 'preview-start' }, [p ? 'Restart preview' : 'Start preview']);
+    startBtn?.addEventListener('click', () => void startPreview(insp));
+    const kids = [h('p', {}, [plan.reason]), h('div', { class: 'actions' }, [startBtn, p ? previewControls(p) : null])];
+    if (p) kids.push(previewFrame(p));
+    fill(box, ...kids);
+  } else if (plan.kind === 'build') {
+    fill(box,
+      h('p', {}, [plan.reason]),
+      h('p', { class: 'muted' }, [insp.runner.available ? `Choose "${insp.checks.find((c) => c.id === plan.buildCheckId)?.title ?? 'the build check'}" under Checks and keep "serve the build output" ticked.` : `Building needs a verified sandbox, which this deployment does not have: ${insp.runner.reason ?? 'execution is disabled'}. Use the setup steps to build it locally.`]),
+      state.preview ? previewFrame(state.preview) : null,
+    );
+  } else {
+    fill(box, h('div', { class: 'empty-state' }, [h('h3', {}, ['No live preview for this project']), h('p', {}, [plan.reason])]));
+  }
+}
+
+/** @param {any} p */
+function previewControls(p) {
+  const wrap = h('span', { class: 'preview-controls' }, [
+    h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', class: 'btn btn-quiet' }, ['Open in new tab']),
+  ]);
+  if (p.pathUrl && p.pathUrl !== p.url) wrap.append(h('a', { href: p.pathUrl, target: '_blank', rel: 'noopener noreferrer', class: 'small', title: 'Use this if your browser cannot open the preview address (for example Safari with *.localhost). Pages that use absolute paths may not load all files here.' }, ['Alternative link']));
+  const stop = h('button', { type: 'button', class: 'btn btn-quiet' }, ['Stop']);
+  stop.addEventListener('click', async () => {
+    try {
+      const d = await api(`/api/previews/${p.token}/stop`, { method: 'POST', body: {} });
+      state.preview = d.preview;
+    } catch {
+      /* shown on next render */
+    }
+    if (state.inspection) renderPreview(state.inspection, state.inspection.analysis);
+  });
+  if (p.state === 'running') wrap.append(stop);
+  wrap.append(h('span', { class: 'muted small' }, [p.state === 'running' ? ` Expires ${new Date(p.expiresAt).toLocaleTimeString()}.` : ` ${p.state}.`]));
+  return wrap;
+}
+
+/** @param {any} p */
+function previewFrame(p) {
+  const health = h('ul', { class: 'health' }, p.health.checks.map((/** @type {any} */ c) => h('li', { 'data-ok': String(c.ok) }, [`${c.ok ? 'OK' : 'Problem'}: ${c.name} — ${c.detail}`])));
+  if (p.state !== 'running') return h('div', {}, [health, h('p', { class: 'muted' }, ['The preview is not running.'])]);
+  // Defence in depth: the frame is sandboxed here and the content is served with a CSP sandbox (opaque origin).
+  const frame = h('iframe', { src: p.url, title: `Live preview of ${p.repo}`, sandbox: 'allow-scripts allow-forms allow-popups allow-modals', referrerpolicy: 'no-referrer-when-downgrade', loading: 'lazy', class: 'preview-frame' });
+  return h('div', { class: 'preview-wrap' }, [health, frame]);
+}
+
+/** @param {Inspection} insp */
+async function startPreview(insp) {
+  const btn = document.getElementById('preview-start');
+  if (btn) /** @type {HTMLButtonElement} */ (btn).disabled = true;
+  try {
+    const d = state.preview && state.preview.state !== 'running'
+      ? await api(`/api/previews/${state.preview.token}/restart`, { method: 'POST', body: {} })
+      : await api('/api/previews', { method: 'POST', body: { inspectionId: insp.id } });
+    state.preview = d.preview;
+  } catch (e) {
+    fill($('preview'), h('p', { class: 'field-error' }, [/** @type {Error} */ (e).message]));
+    return;
+  }
+  renderPreview(insp, insp.analysis);
+  document.querySelector('.preview-frame')?.scrollIntoView({ block: 'nearest' });
+}
+
+async function loadPreviews() {
+  const insp = state.inspection;
+  if (!insp) return;
+  try {
+    const d = await api('/api/previews');
+    const mine = d.previews.find((/** @type {any} */ p) => p.commitSha === insp.commit.sha && p.repo === insp.repo.fullName);
+    if (mine) state.preview = mine;
+  } catch {
+    return;
+  }
+  renderPreview(insp, insp.analysis);
+}
+
+/** @param {Inspection} insp @param {any} a */
+function renderReport(insp, a) {
+  fill($('report'),
+    h('p', {}, [`A complete record of this investigation of ${insp.repo.fullName} at ${insp.commit.sha.slice(0, 12)}: ${a.summary.total} finding${a.summary.total === 1 ? '' : 's'}, setup steps, dependencies and limitations. Secrets are redacted.`]),
+    h('div', { class: 'actions' }, [
+      h('a', { class: 'btn btn-primary', href: `/api/inspections/${insp.id}/report?format=md`, download: '' }, ['Download Markdown report']),
+      h('a', { class: 'btn btn-quiet', href: `/api/inspections/${insp.id}/report?format=json`, download: '' }, ['Download JSON']),
+    ]),
+    h('p', { class: 'muted small' }, [`Available while this inspection is kept on the server (${state.config?.limits?.inspectionRetentionMin ?? 15} minutes).`]),
+  );
 }
 
 // ------------------------------------------------------------------ history

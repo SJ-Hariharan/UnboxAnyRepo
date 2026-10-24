@@ -9,6 +9,8 @@ export interface FakeScript {
   result?: Partial<ExecuteResult>;
   /** Ignore abort signals (simulates a runner that cannot stop). */
   ignoreAbort?: boolean;
+  /** Returned as the build artifact when the request asks to collect output. */
+  artifact?: Buffer;
 }
 
 export class FakeRunner implements Runner {
@@ -45,6 +47,7 @@ export class FakeRunner implements Runner {
     });
     const how = await wait;
     if (how === 'aborted') return { outcome: 'cancelled', cleanup: 'confirmed' };
-    return { outcome: 'succeeded', exitCode: 0, cleanup: 'confirmed', ...s.result };
+    const collected = req.collect ? (s.artifact ? { artifact: s.artifact } : { artifactError: 'The build did not produce output.' }) : {};
+    return { outcome: 'succeeded', exitCode: 0, cleanup: 'confirmed', ...collected, ...s.result };
   }
 }

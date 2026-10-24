@@ -4,6 +4,7 @@
  */
 import type { RepoMetadata } from '../github/client.ts';
 import type { DetectionResult } from '../checks/types.ts';
+import type { AnalysisResult } from '../analysis/types.ts';
 import { newId } from './ids.ts';
 
 export interface SourceSummary {
@@ -25,7 +26,10 @@ export interface Inspection {
   notice: string | undefined;
   source: SourceSummary;
   detection: DetectionResult;
+  analysis: AnalysisResult;
   sanitizedTarGz: Buffer;
+  /** Approximate memory held by this inspection (archive + serialized analysis). */
+  sizeBytes: number;
 }
 
 export class InspectionStore {
@@ -38,8 +42,9 @@ export class InspectionStore {
     this.maxBytes = opts.maxBytes ?? 512 * 1024 * 1024;
   }
 
-  add(data: Omit<Inspection, 'id' | 'createdAt'>): Inspection {
-    const item: Inspection = { ...data, id: newId(), createdAt: Date.now() };
+  add(data: Omit<Inspection, 'id' | 'createdAt' | 'sizeBytes'>): Inspection {
+    const sizeBytes = data.sanitizedTarGz.length + Buffer.byteLength(JSON.stringify(data.analysis));
+    const item: Inspection = { ...data, sizeBytes, id: newId(), createdAt: Date.now() };
     this.items.set(item.id, item);
     this.evict();
     return item;
@@ -63,11 +68,11 @@ export class InspectionStore {
 
   private evict(): void {
     let total = 0;
-    for (const item of this.items.values()) total += item.sanitizedTarGz.length;
+    for (const item of this.items.values()) total += item.sizeBytes;
     // Map iteration order is insertion order: evict oldest first.
     for (const [id, item] of this.items) {
       if (total <= this.maxBytes) break;
-      total -= item.sanitizedTarGz.length;
+      total -= item.sizeBytes;
       this.items.delete(id);
     }
   }

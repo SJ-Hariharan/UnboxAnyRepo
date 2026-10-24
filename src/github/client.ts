@@ -52,6 +52,31 @@ export interface GitHubClient {
   /** Confirm a user-supplied SHA exists for this repository. */
   verifyCommit(meta: RepoMetadata, sha: string, signal?: AbortSignal): Promise<string>;
   downloadArchive(meta: RepoMetadata, sha: string, maxBytes: number, signal?: AbortSignal): Promise<Buffer>;
+  /** Published repository security advisories (public data). Optional. */
+  listAdvisories?(meta: RepoMetadata, signal?: AbortSignal): Promise<AdvisoryInfo[]>;
+}
+
+export interface AdvisoryInfo {
+  id: string;
+  severity: string;
+  summary: string;
+  url: string;
+}
+
+const GHSA_RE = /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/;
+
+export function parseAdvisories(json: unknown): AdvisoryInfo[] {
+  if (!Array.isArray(json)) throw new GitHubError('upstream', 'Unexpected response from GitHub');
+  const out: AdvisoryInfo[] = [];
+  for (const a of json.slice(0, 50)) {
+    if (typeof a !== 'object' || a === null) continue;
+    const o = a as Record<string, unknown>;
+    const id = typeof o.ghsa_id === 'string' && GHSA_RE.test(o.ghsa_id) ? o.ghsa_id : undefined;
+    if (!id) continue;
+    const severity = typeof o.severity === 'string' && /^(critical|high|medium|low)$/.test(o.severity) ? o.severity : 'unknown';
+    out.push({ id, severity, summary: cleanText(o.summary, 200) ?? id, url: `https://github.com/advisories/${id}` });
+  }
+  return out;
 }
 
 const API_HOSTS = new Set(['api.github.com']);
@@ -206,6 +231,17 @@ export class HttpGitHubClient implements GitHubClient {
     const body = res.body.toString('utf8').trim();
     if (!isSha(body)) throw new GitHubError('upstream', 'Unexpected response from GitHub');
     return body;
+  }
+
+  async listAdvisories(meta: RepoMetadata, signal?: AbortSignal): Promise<AdvisoryInfo[]> {
+    const res = await this.api(`/repos/${meta.fullName}/security-advisories?state=published&per_page=50`, 'application/vnd.github+json', signal, 2 * 1024 * 1024);
+    let json: unknown;
+    try {
+      json = JSON.parse(res.body.toString('utf8'));
+    } catch {
+      throw new GitHubError('upstream', 'Unexpected response from GitHub');
+    }
+    return parseAdvisories(json);
   }
 
   async downloadArchive(meta: RepoMetadata, sha: string, maxBytes: number, signal?: AbortSignal): Promise<Buffer> {

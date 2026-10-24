@@ -2,25 +2,26 @@
 
 ## Before making the repository public
 
-- [ ] **Choose a license** and add `LICENSE` (for example MIT or Apache-2.0); update `package.json` and the README section.
+- [x] License: MIT `LICENSE` added (copyright "The UnboxAnyRepo contributors"). Replace the holder with a person or organisation if preferred, and confirm you have the right to license all contributions.
+- [ ] Decide whether to keep the provisional name; check domain, handle and trademark availability yourself.
 - [ ] Replace the security contact placeholder in `SECURITY.md`, and enable GitHub private vulnerability reporting.
 - [ ] **Commit `package-lock.json`** (generated and verified with `npm ci`; CI already uses `npm ci`).
 - [ ] Pin sandbox images by digest in your deployment, and pin GitHub Actions to commit SHAs.
-- [ ] Run `npm run check`, `npm run test:e2e`, and `npm run test:docker` with `REPORADAR_DOCKER_RUNTIME=runsc` on a real gVisor host.
-- [ ] Deploy a demo instance with **execution disabled** (or demo mode) so visitors can explore safely.
+- [ ] Run `npm run check` and `npm run test:e2e`; and, if execution will be offered, `npm run sandbox -- --verify` on a real Linux + gVisor host.
+- [ ] Deploy an inspection-only instance (`render.yaml` or the `Dockerfile`) and test it end to end: health check, live inspection, report download, static preview.
 - [ ] If you host execution for others: follow `docs/DEPLOYMENT.md` exactly (dedicated sandbox VM, firewall, gVisor, reverse-proxy rate limits), and read `docs/THREAT_MODEL.md` once more.
 - [ ] Regenerate screenshots with `npm run screenshots`; keep the caption explaining they use the scripted runner.
 - [ ] Set the repository description, topics, social preview image and a pinned "Roadmap" discussion.
 
 ## Repository description
 
-> Inspect a public GitHub repo at a pinned commit and run one allowlisted check (npm test, pytest, go test, cargo test) in a disposable gVisor sandbox. Not a security scanner.
+> From GitHub link to running project: understand any public repository before you clone it — stack, setup steps, security findings, dependency vulnerabilities, live previews of static sites, and a downloadable report. Nothing is executed outside a verified sandbox.
 
-Suggested topics: `sandbox`, `gvisor`, `developer-tools`, `testing`, `docker`, `github`, `ci`, `security`, `nodejs`, `typescript`.
+Suggested topics: `developer-tools`, `static-analysis`, `security`, `github`, `onboarding`, `sandbox`, `gvisor`, `nodejs`, `typescript`.
 
 ## Safe demo repositories
 
-The bundled fixtures in `fixtures/demo-repos/` are small, written for this project and safe to execute. They power `npm run demo`, the browser tests and the screenshots:
+The bundled fixtures in `fixtures/demo-repos/` are small and written for this project. All except `risky-node-api` and `flask-app` are safe to execute; those two contain deliberately insecure patterns for the analysis demo and are never run by any test. They power `npm run demo`, the browser tests and the screenshots:
 
 | Fixture | Shows |
 |---|---|
@@ -31,18 +32,22 @@ The bundled fixtures in `fixtures/demo-repos/` are small, written for this proje
 | `go-hello` | `go test` fully offline |
 | `rust-hello` | `cargo test` without dependencies |
 | `makefile-only` | The "unsupported" state (Makefiles are never run) |
+| `static-site` | A live static preview |
+| `vite-app` | A project that needs a sandboxed build before it can be previewed |
+| `flask-app` | Setup planning with PostgreSQL, Docker and Compose, plus configuration findings |
+| `risky-node-api` | Security findings: injection, install scripts, CI permissions and injection (never executed) |
 
 If you want live examples on a public instance, choose small, well-known repositories you have checked yourself, and present them as examples, not endorsements.
 
 ## Announcement draft
 
-> **RepoRadar: run a GitHub repo's tests without cloning it**
+> **UnboxAnyRepo: from GitHub link to running project**
 >
-> I built a small tool for a habit many of us have: cloning an unfamiliar repository just to see whether its tests pass. RepoRadar takes a public GitHub URL, pins the exact commit, detects Node/Python/Go/Rust projects, and shows a short list of predefined checks, with every command spelled out. You pick one and start it explicitly. It runs in a disposable gVisor container with no network, non-root, read-only, with memory/CPU/PID/disk limits and a hard timeout, and you watch the log live.
+> I built a tool for the first ten minutes with an unfamiliar repository. Paste a public GitHub URL and UnboxAnyRepo pins the exact commit, reads the code without running it, and shows the stack, entry points, scripts, environment variables, Docker/Compose/CI setup, dependency vulnerabilities (OSV.dev), and security findings with evidence and fixes. It writes the setup commands for your machine (with install scripts disabled), previews static sites live in an isolated origin, and exports everything as a Markdown/JSON report.
 >
-> What it is not: a security scanner. A passing check means the check passed in that sandbox at that commit, nothing more. The threat model and residual risks are in the repo.
+> What it is not: a guarantee. Static analysis misses things and flags false positives, and every finding says whether it is confirmed or a heuristic. Running code needs a gVisor sandbox that has passed real-container tests; the public demo has execution turned off.
 >
-> It is deliberately narrow: no arbitrary commands, no CI emulation, no private repos. Feedback on the isolation design and on which ecosystem templates to add next is very welcome.
+> MIT licensed. Feedback on the analysis rules and on which project types to support next is very welcome.
 
 ## Where to share
 

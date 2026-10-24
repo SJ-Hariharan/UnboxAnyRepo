@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tiny Tip Calculator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="/img/logo.svg">
+</head>
+<body>
+  <main>
+    <img src="/img/logo.svg" alt="" width="48" height="48">
+    <h1>Tiny Tip Calculator</h1>
+    <label>Bill <input id="bill" type="number" value="40" min="0"></label>
+    <label>Tip % <input id="pct" type="number" value="15" min="0" max="100"></label>
+    <p id="result" aria-live="polite"></p>
+    <p><a href="about/">About this demo</a></p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

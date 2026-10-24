@@ -45,6 +45,25 @@ export interface SourceSnapshot {
   sanitizedTarGz: Buffer;
   /** pax global "comment" (git archive writes the commit SHA there), if present. */
   archiveCommitComment: string | undefined;
+  /** Text files kept for static analysis (only when `collectText` is set). */
+  texts: Map<string, Buffer>;
+  textStats: TextStats;
+}
+
+export interface TextStats {
+  collected: number;
+  collectedBytes: number;
+  skipped: Record<'vendored' | 'binary' | 'generated' | 'too_large' | 'budget', number>;
+}
+
+export interface CollectTextOptions {
+  maxTotalBytes: number;
+  /** Docs, data and fixtures share this smaller budget so they cannot crowd out source code. */
+  maxSecondaryBytes: number;
+  isSecondary(path: string): boolean;
+  /** Returns a skip reason, or null to keep the file (subject to the total budget). */
+  skipReason(path: string, size: number): 'vendored' | 'binary' | 'generated' | 'too_large' | null;
+  isBinary(data: Buffer): boolean;
 }
 
 export class ArchiveError extends Error {
@@ -111,7 +130,7 @@ export function symlinkStaysInside(linkPath: string, target: string): boolean {
 export async function sanitizeArchive(
   gz: Buffer,
   limits: ArchiveLimits,
-  opts: { expectedSha?: string } = {},
+  opts: { expectedSha?: string; collectText?: CollectTextOptions } = {},
 ): Promise<SourceSnapshot> {
   if (gz.length > limits.maxCompressedBytes) throw new ArchiveError('too_large', 'Repository archive is too large');
 
@@ -154,6 +173,10 @@ export async function sanitizeArchive(
   let skippedSymlinkCount = 0;
   let totalBytes = 0;
   let entries = 0;
+  const texts = new Map<string, Buffer>();
+  const textStats: TextStats = { collected: 0, collectedBytes: 0, skipped: { vendored: 0, binary: 0, generated: 0, too_large: 0, budget: 0 } };
+  const collect = opts.collectText;
+  let secondaryBytes = 0;
 
   const ensureParents = async (rel: string, mtime: number) => {
     const segs = rel.split('/');
@@ -218,6 +241,19 @@ export async function sanitizeArchive(
           seen.set(rel, 'file');
           files.push({ path: rel, size: body.length });
           if (isManifestPath(rel) && body.length <= MANIFEST_MAX_BYTES) manifests.set(rel, body);
+          if (collect) {
+            const reason = collect.skipReason(rel, body.length) ?? (collect.isBinary(body) ? 'binary' : null);
+            const secondary = !reason && collect.isSecondary(rel);
+            if (reason) textStats.skipped[reason]++;
+            else if (textStats.collectedBytes + body.length > collect.maxTotalBytes) textStats.skipped.budget++;
+            else if (secondary && secondaryBytes + body.length > collect.maxSecondaryBytes) textStats.skipped.budget++;
+            else {
+              texts.set(rel, body);
+              textStats.collected++;
+              textStats.collectedBytes += body.length;
+              if (secondary) secondaryBytes += body.length;
+            }
+          }
           const mode = (entry.mode & 0o111) !== 0 ? 0o755 : 0o644;
           await write(encodeEntry({ path: `src/${rel}`, kind: 'file', mode, mtime: entry.mtime, uid: SANDBOX_UID, gid: SANDBOX_UID, data: body }));
           return;
@@ -269,5 +305,7 @@ export async function sanitizeArchive(
     manifests,
     sanitizedTarGz: Buffer.concat(outChunks),
     archiveCommitComment: comment,
+    texts,
+    textStats,
   };
 }

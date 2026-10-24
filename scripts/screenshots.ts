@@ -17,7 +17,7 @@ const out = path.resolve(process.argv[2] ?? path.join(ROOT, 'docs', 'screenshots
 mkdirSync(out, { recursive: true });
 
 const runner = new FakeRunner();
-runner.statusOverride = { label: 'Docker + gVisor (runsc)' };
+runner.statusOverride = { label: 'scripted demo runner (nothing executed)' };
 const srv = await startServer({ runner });
 const browser = await chromium.launch();
 
@@ -38,8 +38,26 @@ try {
     await page.getByText(/Sandbox ready/).waitFor();
     await page.screenshot({ path: path.join(out, `home-${scheme}.png`) });
 
+    await page.getByLabel('Public GitHub repository URL').fill(DEMO('risky-node-api'));
+    await page.getByRole('button', { name: 'Inspect' }).click();
+    await page.locator('#inspection').waitFor();
+    await page.locator('#findings .finding summary').nth(1).click();
+    await page.locator('#sec-security').screenshot({ path: path.join(out, `security-${scheme}.png`) });
+    await page.locator('#sec-overview').screenshot({ path: path.join(out, `overview-${scheme}.png`) });
+
+    await page.getByLabel('Public GitHub repository URL').fill(DEMO('flask-app'));
+    await page.getByRole('button', { name: 'Inspect' }).click();
+    await page.locator('#setup').getByText('Start Flask').waitFor();
+    await page.locator('#sec-setup').screenshot({ path: path.join(out, `setup-${scheme}.png`) });
+
+    await page.getByLabel('Public GitHub repository URL').fill(DEMO('static-site'));
+    await page.getByRole('button', { name: 'Inspect' }).click();
+    await page.getByRole('button', { name: 'Start preview' }).click();
+    await page.frameLocator('.preview-frame').locator('#result').waitFor();
+    await page.locator('#sec-preview').screenshot({ path: path.join(out, `preview-${scheme}.png`) });
+
     await flow(page, 'node-hello', /npm test/);
-    await page.locator('#inspection').screenshot({ path: path.join(out, `plan-${scheme}.png`) });
+    await page.locator('#sec-checks').screenshot({ path: path.join(out, `plan-${scheme}.png`) });
 
     runner.script = {
       lines: [

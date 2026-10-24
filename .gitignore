@@ -7,3 +7,9 @@ coverage/
 test-results/
 playwright-report/
 .DS_Store
+
+# graphify knowledge graph output
+graphify-out/
+
+# Sandbox verification record (per host)
+.unbox/

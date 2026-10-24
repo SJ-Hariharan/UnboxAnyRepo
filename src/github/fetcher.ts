@@ -40,7 +40,7 @@ export interface TransportResponse {
 }
 
 /** A transport performs exactly one request (no redirects). Injectable for tests. */
-export type Transport = (url: URL, headers: Record<string, string>, signal: AbortSignal) => Promise<TransportResponse>;
+export type Transport = (url: URL, headers: Record<string, string>, signal: AbortSignal, body?: Buffer) => Promise<TransportResponse>;
 
 export interface SafeFetchOptions {
   allowedHosts: ReadonlySet<string>;
@@ -52,6 +52,8 @@ export interface SafeFetchOptions {
   maxRedirects?: number;
   signal?: AbortSignal;
   transport?: Transport;
+  /** JSON or other request body; makes the request a POST. POSTs never follow redirects. */
+  body?: Buffer;
 }
 
 export interface SafeResponse {
@@ -72,7 +74,7 @@ export function validateTarget(url: URL, allowedHosts: ReadonlySet<string>): voi
 
 export async function safeFetch(input: string, opts: SafeFetchOptions): Promise<SafeResponse> {
   const transport = opts.transport ?? defaultTransport;
-  const maxRedirects = opts.maxRedirects ?? 3;
+  const maxRedirects = opts.body ? 0 : (opts.maxRedirects ?? 3);
   const controller = new AbortController();
   const onOuterAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onOuterAbort, { once: true });
@@ -92,13 +94,14 @@ export async function safeFetch(input: string, opts: SafeFetchOptions): Promise<
 
       let res: TransportResponse;
       try {
-        res = await transport(url, headers, controller.signal);
+        res = await transport(url, headers, controller.signal, opts.body);
       } catch (err) {
         throw mapError(err, timedOut, controller.signal.aborted);
       }
 
       if (res.status >= 300 && res.status < 400 && res.headers.location !== undefined) {
         res.destroy();
+        if (opts.body) throw new FetchError('redirect_not_allowed', 'Redirects are not followed for POST requests');
         if (hop >= maxRedirects) throw new FetchError('too_many_redirects', 'Too many redirects');
         const loc = Array.isArray(res.headers.location) ? res.headers.location[0] : res.headers.location;
         let next: URL;
@@ -161,7 +164,7 @@ function wrapIncoming(res: http.IncomingMessage, req: http.ClientRequest): Trans
 }
 
 /** Direct HTTPS with guarded DNS lookup (public addresses only). */
-export const directTransport: Transport = (url, headers, signal) =>
+export const directTransport: Transport = (url, headers, signal, body) =>
   new Promise((resolve, reject) => {
     const req = https.request(
       {
@@ -169,8 +172,8 @@ export const directTransport: Transport = (url, headers, signal) =>
         hostname: url.hostname,
         port: 443,
         path: url.pathname + url.search,
-        method: 'GET',
-        headers,
+        method: body ? 'POST' : 'GET',
+        headers: body ? { ...headers, 'content-length': String(body.length) } : headers,
         lookup: guardedLookup as unknown as typeof import('node:dns').lookup,
         agent: false,
         signal,
@@ -178,7 +181,7 @@ export const directTransport: Transport = (url, headers, signal) =>
       (res) => resolve(wrapIncoming(res, req)),
     );
     req.on('error', reject);
-    req.end();
+    req.end(body);
   });
 
 /**
@@ -187,7 +190,7 @@ export const directTransport: Transport = (url, headers, signal) =>
  */
 export function proxyTransport(proxyUrl: string): Transport {
   const proxy = new URL(proxyUrl);
-  return (url, headers, signal) =>
+  return (url, headers, signal, body) =>
     new Promise((resolve, reject) => {
       const target = `${url.hostname}:443`;
       const connectReq = http.request({
@@ -210,8 +213,8 @@ export function proxyTransport(proxyUrl: string): Transport {
             hostname: url.hostname,
             port: 443,
             path: url.pathname + url.search,
-            method: 'GET',
-            headers,
+            method: body ? 'POST' : 'GET',
+            headers: body ? { ...headers, 'content-length': String(body.length) } : headers,
             agent: false,
             signal,
             createConnection: () => tls.connect({ socket, servername: url.hostname, ALPNProtocols: ['http/1.1'] }),
@@ -219,7 +222,7 @@ export function proxyTransport(proxyUrl: string): Transport {
           (r) => resolve(wrapIncoming(r, req)),
         );
         req.on('error', reject);
-        req.end();
+        req.end(body);
       });
       connectReq.end();
     });

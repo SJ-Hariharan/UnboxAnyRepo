@@ -1,4 +1,4 @@
-// Package gohello is a RepoRadar demo fixture.
+// Package gohello is a UnboxAnyRepo demo fixture.
 package gohello
 
 // Reverse returns s with its runes in reverse order.

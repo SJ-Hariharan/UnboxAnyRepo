@@ -46,6 +46,9 @@ interface RunRecord {
   abort: AbortController;
   source: Buffer | null;
   listeners: Set<(e: RunEvent) => void>;
+  preview?: { dir: string; maxBytes: number };
+  previewToken?: string;
+  previewError?: string;
 }
 
 export interface RunView {
@@ -71,6 +74,8 @@ export interface RunView {
   cancelRequested: boolean;
   log: { truncated: boolean; receivedBytes: number };
   nextSteps: string[];
+  /** Build previews: requested, then either a token or an explanation. */
+  preview?: { requested: true; token?: string; error?: string };
 }
 
 export type RunEvent = { type: 'state'; run: RunView } | { type: 'log'; lines: LogLine[] } | { type: 'truncated' };
@@ -80,7 +85,11 @@ export interface CreateRunInput {
   inspection: Inspection;
   checkId: unknown;
   acknowledged: unknown;
+  /** Collect this output directory after a successful run, for a build preview. */
+  preview?: { dir: string; maxBytes: number };
 }
+
+export type ArtifactHandler = (run: { id: string; sessionId: string; inspectionId: string; repo: { fullName: string }; commitSha: string; dir: string }, artifact: Buffer) => Promise<string>;
 
 export class RunManager {
   private readonly runs = new Map<string, RunRecord>();
@@ -91,7 +100,11 @@ export class RunManager {
   private readonly secretValues: readonly string[];
   private readonly watchdogMarginSec: number;
 
-  constructor(opts: { runner: Runner; limits: Limits; secretValues: readonly string[]; watchdogMarginSec?: number }) {
+  private readonly onArtifact: ArtifactHandler | undefined;
+  private readonly inspectionOf = new Map<string, string>();
+
+  constructor(opts: { runner: Runner; limits: Limits; secretValues: readonly string[]; watchdogMarginSec?: number; onArtifact?: ArtifactHandler }) {
+    this.onArtifact = opts.onArtifact;
     this.runner = opts.runner;
     this.limits = opts.limits;
     this.secretValues = opts.secretValues;
@@ -141,7 +154,9 @@ export class RunManager {
       abort: new AbortController(),
       source: inspection.sanitizedTarGz,
       listeners: new Set(),
+      ...(input.preview ? { preview: input.preview } : {}),
     };
+    this.inspectionOf.set(rec.id, inspection.id);
     rec.log.events = {
       onLine: (line) => this.emit(rec, { type: 'log', lines: [line] }),
       onTruncated: () => this.emit(rec, { type: 'truncated' }),
@@ -219,7 +234,10 @@ export class RunManager {
   purge(): void {
     const cutoff = Date.now() - this.limits.runRetentionSec * 1000;
     for (const [id, r] of this.runs) {
-      if (TERMINAL.has(r.state) && (r.finishedAt ?? r.createdAt) < cutoff) this.runs.delete(id);
+      if (TERMINAL.has(r.state) && (r.finishedAt ?? r.createdAt) < cutoff) {
+        this.runs.delete(id);
+        this.inspectionOf.delete(id);
+      }
     }
   }
 
@@ -278,7 +296,24 @@ export class RunManager {
         onOutput: (stream, chunk) => r.log.write(stream, chunk),
         onOutputEnd: (stream) => r.log.end(stream),
         onSystem: (text) => r.log.system(text),
+        ...(r.preview ? { collect: r.preview } : {}),
       });
+      if (r.preview && res.outcome === 'succeeded') {
+        if (res.artifact && this.onArtifact) {
+          try {
+            r.previewToken = await this.onArtifact(
+              { id: r.id, sessionId: r.sessionId, inspectionId: this.inspectionOf.get(r.id) ?? '', repo: r.repo, commitSha: r.commitSha, dir: r.preview.dir },
+              res.artifact,
+            );
+            r.log.system('Build output collected; the preview is ready.');
+          } catch (err) {
+            r.previewError = err instanceof Error ? err.message : 'The preview could not be created.';
+          }
+        } else {
+          r.previewError = res.artifactError ?? 'The build output could not be collected.';
+        }
+        if (r.previewError) r.log.system(`Preview not created: ${r.previewError}`);
+      }
       let state: RunState = res.outcome;
       let message = res.message;
       if (watchdogFired && state === 'cancelled') {
@@ -353,6 +388,7 @@ export class RunManager {
       log: { truncated: r.log.isTruncated, receivedBytes: r.log.receivedBytes },
       nextSteps: nextSteps(r),
     };
+    if (r.preview) v.preview = { requested: true, ...(r.previewToken ? { token: r.previewToken } : {}), ...(r.previewError ? { error: r.previewError } : {}) };
     if (r.startedAt) v.startedAt = new Date(r.startedAt).toISOString();
     if (r.finishedAt) v.finishedAt = new Date(r.finishedAt).toISOString();
     if (r.startedAt && r.finishedAt) v.durationMs = r.finishedAt - r.startedAt;

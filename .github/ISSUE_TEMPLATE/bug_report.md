@@ -13,7 +13,7 @@ labels: bug
 **Steps to reproduce** (repository URL if public, check chosen)
 
 **Configuration**
-- RepoRadar version / commit:
+- UnboxAnyRepo version / commit:
 - Runner (`disabled` / `docker`) and runtime (`runsc` / `runc`):
 - Node.js version, OS:
 

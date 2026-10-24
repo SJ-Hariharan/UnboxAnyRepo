@@ -1,7 +1,7 @@
 /**
  * Pull the sandbox images configured for this deployment onto the sandbox host.
  * The runner never pulls implicitly (--pull never), so run this after setup and
- * whenever you change REPORADAR_IMAGE_*.
+ * whenever you change UNBOX_IMAGE_*.
  *
  *   node scripts/pull-images.ts
  */

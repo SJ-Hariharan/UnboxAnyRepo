@@ -1,5 +1,8 @@
 name: CI
 
+# Pull requests run with a read-only token and no secrets (the pull_request
+# trigger, never pull_request_target), so code from forks cannot write to the
+# repository or read secrets. No job here executes analysed repositories.
 on:
   push:
     branches: [main]
@@ -8,20 +11,60 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
-        node: [22, 24]
+        node: ["22", "24"]
     steps:
-      # Pin these actions to commit SHAs before launch.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      # Unit + API tests. The real-scanner test is skipped here (scanners not installed) and runs in the job below.
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+
+  scanners:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SEMGREP_VERSION: "1.182.0"
+      GITLEAKS_VERSION: "8.30.1"
+      # From the official gitleaks_8.30.1_checksums.txt; update together with the version.
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - run: npm ci --no-audit --no-fund
+      - name: Install Semgrep (pinned)
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+      - name: Install Gitleaks (pinned version and checksum)
+        run: |
+          set -euo pipefail
+          file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}"
+          echo "${GITLEAKS_SHA256}  ${file}" | sha256sum -c -
+          tar -xzf "${file}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - run: semgrep --version && gitleaks version
+      - name: Validate UnboxAnyRepo's Semgrep rules
+        run: semgrep scan --validate --metrics=off --config rules/semgrep/unboxanyrepo.yml
+      - name: Scanner integration test (real binaries)
+        run: node --test --test-reporter=spec test/unit/scanners.test.ts

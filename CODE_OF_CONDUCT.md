@@ -1,6 +1,6 @@
 # Code of conduct
 
-We want RepoRadar to be a welcoming project for everyone who uses or contributes to it.
+We want UnboxAnyRepo to be a welcoming project for everyone who uses or contributes to it.
 
 ## Expected behaviour
 

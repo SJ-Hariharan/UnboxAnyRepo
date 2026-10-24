@@ -1,8 +1,8 @@
 {
-  "name": "reporadar",
-  "version": "0.1.0",
+  "name": "unboxanyrepo",
+  "version": "0.2.0",
   "private": true,
-  "description": "Inspect a public GitHub repository at a pinned commit and run one allowlisted check in a disposable sandbox.",
+  "description": "From GitHub link to running project: inspect a public GitHub repository at a pinned commit, get a structured source and security analysis, setup instructions, and live previews of supported projects.",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
@@ -18,14 +18,26 @@
     "check": "npm run typecheck && npm test",
     "egress-proxy": "node src/egress-proxy/main.ts",
     "screenshots": "node scripts/screenshots.ts",
-    "pull-images": "node scripts/pull-images.ts"
+    "pull-images": "node scripts/pull-images.ts",
+    "sandbox": "node scripts/sandbox.ts"
   },
   "dependencies": {
-    "smol-toml": "^1.6.1"
+    "smol-toml": "^1.6.1",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "playwright": "^1.56.0",
     "typescript": "^6.0.3"
-  }
+  },
+  "license": "MIT",
+  "keywords": [
+    "github",
+    "static-analysis",
+    "security",
+    "developer-tools",
+    "sandbox",
+    "gvisor",
+    "preview"
+  ]
 }

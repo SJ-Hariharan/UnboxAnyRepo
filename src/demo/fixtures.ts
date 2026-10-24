@@ -11,7 +11,7 @@ import { encodeEntry, endOfArchive } from '../source/tar.ts';
 import { GitHubError } from '../github/client.ts';
 import type { GitHubClient, RepoMetadata } from '../github/client.ts';
 
-export const DEMO_OWNER = 'reporadar-demo';
+export const DEMO_OWNER = 'unbox-demo';
 
 interface DemoRepo {
   meta: RepoMetadata;

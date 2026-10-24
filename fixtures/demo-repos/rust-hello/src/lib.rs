@@ -1,4 +1,4 @@
-//! RepoRadar demo fixture.
+//! UnboxAnyRepo demo fixture.
 
 /// Returns the n-th Fibonacci number.
 pub fn fib(n: u32) -> u64 {

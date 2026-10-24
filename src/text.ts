@@ -17,13 +17,16 @@ export function hasControlChars(s: string, opts: { rejectSpace?: boolean } = {})
   return false;
 }
 
-/** Replace runs of control characters with a single space. */
-export function collapseControlChars(s: string): string {
+/** Replace runs of control characters with a single space (optionally keeping \n and \t). */
+export function collapseControlChars(s: string, opts: { keepNewlines?: boolean } = {}): string {
   let out = '';
   let inRun = false;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (isControlCode(c)) {
+    if (opts.keepNewlines === true && (c === 0x0a || c === 0x09)) {
+      out += s[i];
+      inRun = false;
+    } else if (isControlCode(c)) {
       if (!inRun) out += ' ';
       inRun = true;
     } else {

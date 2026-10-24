@@ -3,21 +3,21 @@
 #
 #   docker compose -f deploy/compose.sandbox-host.yml up -d
 #
-# Then configure RepoRadar with:
-#   REPORADAR_FETCH_NETWORK=reporadar-fetch
-#   REPORADAR_FETCH_PROXY_URL=http://reporadar-egress:3128
+# Then configure UnboxAnyRepo with:
+#   UNBOX_FETCH_NETWORK=unbox-fetch
+#   UNBOX_FETCH_PROXY_URL=http://unbox-egress:3128
 #
 # Review before use. The proxy logic is covered by unit tests and its network
 # isolation was checked manually with Docker; this exact compose file has not
 # been run in CI. Pin the image by digest in production.
-name: reporadar-sandbox
+name: unbox-sandbox
 
 networks:
-  reporadar-fetch:
-    name: reporadar-fetch
+  unbox-fetch:
+    name: unbox-fetch
     internal: true          # no route out; install containers can reach only the proxy
-  reporadar-egress:
-    name: reporadar-egress-out
+  unbox-egress:
+    name: unbox-egress-out
 
 services:
   egress-proxy:
@@ -28,14 +28,14 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      REPORADAR_EGRESS_PORT: "3128"
-      # REPORADAR_EGRESS_ALLOWLIST: "registry.npmjs.org,pypi.org,files.pythonhosted.org,proxy.golang.org,sum.golang.org,index.crates.io,static.crates.io"
+      UNBOX_EGRESS_PORT: "3128"
+      # UNBOX_EGRESS_ALLOWLIST: "registry.npmjs.org,pypi.org,files.pythonhosted.org,proxy.golang.org,sum.golang.org,index.crates.io,static.crates.io"
     volumes:
       - ../src:/app/src:ro
     networks:
-      reporadar-fetch:
-        aliases: [reporadar-egress]
-      reporadar-egress: {}
+      unbox-fetch:
+        aliases: [unbox-egress]
+      unbox-egress: {}
     mem_limit: 256m
     pids_limit: 128
     restart: unless-stopped

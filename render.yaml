@@ -1,0 +1,57 @@
+# Render Blueprint for an INSPECTION-ONLY public instance of UnboxAnyRepo.
+# Free plan: no cost, but the service sleeps when idle and has little memory.
+# Nothing here enables code execution: there is no Docker, no sandbox host
+# and no verification record on this service, so the runner stays disabled.
+# Review https://render.com/pricing before deploying; plans and limits change.
+services:
+  - type: web
+    name: unboxanyrepo
+    runtime: node
+    plan: free
+    # Inspection needs no dev dependencies (TypeScript runs through Node's type stripping).
+    buildCommand: npm ci --omit=dev --no-audit --no-fund
+    startCommand: node src/server.ts
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: NODE_VERSION
+        value: "22.23.2"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # Render sets PORT; the server reads it.
+      - key: UNBOX_RUNNER
+        value: disabled
+      - key: UNBOX_PREVIEW_DOMAIN
+        value: "off" # no wildcard DNS on the free plan: path-based previews only
+      - key: UNBOX_TRUST_PROXY
+        value: "true" # Render's proxy sets X-Forwarded-For; verify for your setup
+      # Set UNBOX_PUBLIC_ORIGIN to the service URL after the first deploy, e.g. https://unboxanyrepo.onrender.com
+      - key: UNBOX_PUBLIC_ORIGIN
+        sync: false
+      # Strongly recommended: a fine-grained GitHub token with NO permissions (public data only).
+      - key: GITHUB_TOKEN
+        sync: false
+      # Fit the free instance's memory (about 512 MB).
+      - key: UNBOX_ARCHIVE_MAX_MB
+        value: "25"
+      - key: UNBOX_ARCHIVE_MAX_UNCOMPRESSED_MB
+        value: "120"
+      - key: UNBOX_REPO_MAX_REPORTED_MB
+        value: "200"
+      - key: UNBOX_ANALYSIS_MAX_TOTAL_MB
+        value: "16"
+      - key: UNBOX_INSPECTION_STORE_MB
+        value: "96"
+      - key: UNBOX_PREVIEW_STORE_MB
+        value: "48"
+      - key: UNBOX_PREVIEW_MAX_MB
+        value: "10"
+      - key: UNBOX_MAX_CONCURRENT_INSPECTIONS
+        value: "2"
+      - key: UNBOX_INSPECTIONS_PER_IP_PER_10_MIN
+        value: "10"
+      # Semgrep/Gitleaks are not installed on Render's Node runtime; reports say so.
+      - key: UNBOX_SCANNERS
+        value: "off"

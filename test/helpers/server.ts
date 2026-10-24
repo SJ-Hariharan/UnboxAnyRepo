@@ -10,7 +10,7 @@ import { testConfig } from './limits.ts';
 import { FakeRunner } from './fake-runner.ts';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const DEMO = (name: string) => `https://github.com/reporadar-demo/${name}`;
+export const DEMO = (name: string) => `https://github.com/unbox-demo/${name}`;
 
 export interface TestServer {
   app: App;

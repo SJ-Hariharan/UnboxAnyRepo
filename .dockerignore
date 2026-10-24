@@ -1,0 +1,9 @@
+node_modules
+.git
+.unbox
+test
+docs/screenshots
+*.log
+.env
+.env.*
+!.env.example

@@ -1,6 +1,6 @@
-# Contributing to RepoRadar
+# Contributing to UnboxAnyRepo
 
-Thank you for helping. RepoRadar runs untrusted code, so the bar for changes to its security boundaries is high, and the bar for everything else is "clear, tested and small".
+Thank you for helping. UnboxAnyRepo handles untrusted repositories, so the bar for changes to its security boundaries is high, and the bar for everything else is "clear, tested and small".
 
 ## Setup
 
@@ -13,10 +13,12 @@ npx playwright install chromium && npm run test:e2e
 
 Node.js 22.18+ runs the TypeScript sources directly; there is no build step. Use only erasable TypeScript syntax (no `enum`, no parameter properties, no namespaces) and import local files with their `.ts` extension.
 
-To run real-container tests you need Docker, ideally with gVisor:
+Optional: install Semgrep and Gitleaks so the real-scanner test runs (it is skipped otherwise).
+
+Real-container tests need a Linux host with Docker and gVisor. Run them through the diagnostic command, which refuses to run them under `runc`:
 
 ```sh
-REPORADAR_TEST_DOCKER=1 REPORADAR_DOCKER_RUNTIME=runsc npm run test:docker
+npm run sandbox -- --verify
 ```
 
 ## Ground rules
@@ -26,7 +28,16 @@ REPORADAR_TEST_DOCKER=1 REPORADAR_DOCKER_RUNTIME=runsc npm run test:docker
 - **Treat every input as hostile:** request bodies, GitHub responses, archive entries, manifests, logs.
 - **No `innerHTML`** (or equivalents) in the UI for anything that is not a constant.
 - **Keep dependencies minimal.** Explain any new runtime dependency in the pull request.
-- **Be honest in the UI and docs.** No simulated progress, no claims that a repository is safe.
+- **Be honest in the UI and docs.** No simulated progress, no scores, no claims that a repository is safe. A tool that did not run must say so.
+- **Never execute repository content during analysis or preview.** Analysers read text; they never evaluate, import, build or install anything.
+- **Never store secret values.** Redact evidence before it leaves the rule, and never read environment values into results.
+
+## Adding an analysis rule
+
+1. Built-in rules live in `src/analysis/rules/` (secrets, code, configuration); Semgrep rules in `rules/semgrep/unboxanyrepo.yml` (validate with `semgrep scan --validate --config rules/semgrep/unboxanyrepo.yml`).
+2. Give the rule a stable id, a CWE where one fits, a plain-language risk and remediation, and the right status: `confirmed` only for facts read directly from configuration or advisory data, `heuristic` for pattern matches.
+3. Add tests in `test/unit/analysis.test.ts` for a true positive, a near miss that must not match, and test-code downgrading where relevant.
+4. Add or extend a demo fixture only with obviously fake values, and never with real-format credentials.
 
 ## Adding an ecosystem or check
 

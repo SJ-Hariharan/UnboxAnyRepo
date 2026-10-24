@@ -9,6 +9,7 @@ import { sanitizeArchive } from '../../src/source/archive.ts';
 import { repoArchive } from '../helpers/tarbuilder.ts';
 import { FakeRunner } from '../helpers/fake-runner.ts';
 import { testLimits } from '../helpers/limits.ts';
+import { analyseOffline } from '../helpers/analysis.ts';
 import { fixtures } from '../fixtures/detection.ts';
 import type { RepoFixture } from '../fixtures/detection.ts';
 
@@ -25,6 +26,7 @@ async function inspection(store: InspectionStore, sessionId: string, files: Repo
     notice: undefined,
     source: { fileCount: snap.files.length, totalBytes: snap.totalBytes, skippedSymlinkCount: 0, skippedSymlinks: [] },
     detection: detectProject(snap, { goImage: 'golang:1.25' }),
+    analysis: await analyseOffline(snap),
     sanitizedTarGz: snap.sanitizedTarGz,
   });
 }

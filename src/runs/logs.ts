@@ -74,7 +74,7 @@ export class RunLog {
     return this.truncated;
   }
 
-  /** A message from RepoRadar itself (step banners, outcomes). */
+  /** A message from UnboxAnyRepo itself (step banners, outcomes). */
   system(text: string): void {
     this.push('system', sanitizeLine(text));
   }

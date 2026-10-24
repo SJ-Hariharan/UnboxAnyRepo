@@ -1,0 +1,14 @@
+name: CI
+on:
+  pull_request_target:
+permissions: write-all
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: some-org/setup-thing@v1
+      - run: echo "Testing ${{ github.event.pull_request.title }}"
+      - run: npm install && npm test

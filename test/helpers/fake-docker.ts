@@ -25,6 +25,11 @@ export interface FakeDockerOptions {
   containers?: { name: string; tag: string }[];
   volumes?: string[];
   unreachable?: boolean;
+  /** What the kernel-log probe prints: gVisor (default) or a normal Linux kernel. */
+  kernel?: 'gvisor' | 'linux';
+  imageIds?: Record<string, string>;
+  /** Bytes a `tar -c` (build output collection) container writes to stdout. */
+  artifact?: Buffer;
 }
 
 export class FakeDocker implements CommandExecutor {
@@ -73,7 +78,13 @@ export class FakeDocker implements CommandExecutor {
     if (this.o.unreachable) return fail();
     const [cmd, sub] = args;
     if (cmd === 'info') return ok(JSON.stringify(Object.fromEntries((this.o.runtimes ?? ['runsc', 'runc']).map((r) => [r, {}]))));
-    if (cmd === 'image' && sub === 'inspect') return (this.o.images ?? []).includes(args.at(-1) as string) ? ok('sha256:x') : fail();
+    if (cmd === 'image' && sub === 'inspect') {
+      const img = args.at(-1) as string;
+      return (this.o.images ?? []).includes(img) ? ok(`${this.o.imageIds?.[img] ?? 'sha256:x'}\n`) : fail();
+    }
+    if (cmd === 'run' && args.includes('--entrypoint') && this.flag(args, '--entrypoint') === 'dmesg') {
+      return ok(this.o.kernel === 'linux' ? '[    0.000000] Linux version 6.10.0\n' : '[    0.000000] Starting gVisor...\n');
+    }
     if (cmd === 'network' && sub === 'inspect') {
       const n = this.o.networks?.[args.at(-1) as string];
       return n ? ok(String(n.internal)) : fail();
@@ -88,13 +99,13 @@ export class FakeDocker implements CommandExecutor {
       return ok();
     }
     if (cmd === 'volume' && sub === 'ls') {
-      const tagFilter = /label=reporadar\.run=(\w+)/.exec(args.join(' '))?.[1];
-      const list = [...this.volumes].filter((v) => !tagFilter || v === `reporadar-${tagFilter}`);
+      const tagFilter = /label=unbox\.run=(\w+)/.exec(args.join(' '))?.[1];
+      const list = [...this.volumes].filter((v) => !tagFilter || v === `unbox-${tagFilter}`);
       return ok(list.join('\n'));
     }
     if (cmd === 'run' && args.includes('-d')) {
       const name = this.flag(args, '--name') as string;
-      this.containers.set(name, { tag: /reporadar-([a-f0-9]{16})/.exec(name)?.[1] ?? '' });
+      this.containers.set(name, { tag: /unbox-([a-f0-9]{16})/.exec(name)?.[1] ?? '' });
       return ok('cid');
     }
     if (cmd === 'rm') {
@@ -106,7 +117,7 @@ export class FakeDocker implements CommandExecutor {
       return ok();
     }
     if (cmd === 'ps') {
-      const tagFilter = /label=reporadar\.run=(\w+)/.exec(args.join(' '))?.[1];
+      const tagFilter = /label=unbox\.run=(\w+)/.exec(args.join(' '))?.[1];
       const rows = [...this.containers].filter(([, c]) => !tagFilter || c.tag === tagFilter);
       if (args.includes('--format')) return ok(rows.map(([n, c]) => `${n}\t${c.tag}`).join('\n'));
       return ok(rows.map(([n]) => n).join('\n'));
@@ -121,7 +132,7 @@ export class FakeDocker implements CommandExecutor {
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     const name = this.flag(args, '--name') ?? '';
-    const tag = /reporadar-([a-f0-9]{16})/.exec(name)?.[1] ?? '';
+    const tag = /unbox-([a-f0-9]{16})/.exec(name)?.[1] ?? '';
     let resolveExit: (code: number | null) => void = () => {};
     const exited = new Promise<number | null>((r) => (resolveExit = r));
     let done = false;
@@ -136,7 +147,13 @@ export class FakeDocker implements CommandExecutor {
     this.containers.set(name, { tag, kill: () => finish(137) });
 
     const command = this.commandOf(args);
-    if (command.startsWith('tar ')) {
+    if (command.startsWith('tar -c')) {
+      stdin.resume();
+      setImmediate(() => {
+        if (this.o.artifact) stdout.write(this.o.artifact);
+        setImmediate(() => finish(this.o.artifact ? 0 : 2));
+      });
+    } else if (command.startsWith('tar ')) {
       const chunks: Buffer[] = [];
       stdin.on('data', (c: Buffer) => chunks.push(c));
       stdin.on('end', () => {

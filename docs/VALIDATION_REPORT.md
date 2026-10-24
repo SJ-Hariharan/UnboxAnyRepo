@@ -1,3 +1,5 @@
+> **Historical:** this report describes the RepoRadar MVP before the UnboxAnyRepo work. Configuration names have since changed from `REPORADAR_*` to `UNBOX_*`. The current state is in [RELEASE_REPORT.md](RELEASE_REPORT.md).
+
 # Validation report — 2026-10-22
 
 Takeover validation of the RepoRadar MVP (commit `b74521b`) on macOS 15 (Darwin 24.5, Apple Silicon), Node.js 22.23.2, npm 10.9.8, Docker Desktop with `runc` only (no gVisor).

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Inspect a public GitHub repository at a pinned commit and run one known check in a disposable sandbox.">
-  <title>{{PRODUCT_NAME}}: test a GitHub repository in a sandbox</title>
+  <meta name="description" content="{{PRODUCT_DESCRIPTION}}">
+  <title>{{PRODUCT_NAME}}: {{PRODUCT_TAGLINE}}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
@@ -16,7 +16,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="{{PRODUCT_NAME}} home">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7"/><circle cx="16" cy="16" r="9.5" class="ring"/><circle cx="16" cy="16" r="4.5" class="ring"/><path d="M16 16 L24.5 9" class="sweep"/><circle cx="16" cy="16" r="1.8" class="dot"/></svg>
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" class="bg"/><path d="M8 13 L16 9 L24 13 L16 17 Z" class="lid"/><path d="M8 13 V21 L16 25 V17 M24 13 V21 L16 25" class="box"/><path d="M16 9 L13 5 M16 9 L19 5" class="spark"/></svg>
         <span class="brand-name" data-product-name>{{PRODUCT_NAME}}</span>
       </a>
       <div id="exec-status" class="exec-status" data-state="loading">
@@ -31,8 +31,13 @@
   <div class="layout">
     <main id="main" tabindex="-1">
       <section class="hero" aria-labelledby="hero-title">
-        <h1 id="hero-title">Run a repository’s tests without cloning it.</h1>
-        <p class="lede">Paste a public GitHub URL. <span data-product-name>{{PRODUCT_NAME}}</span> pins the exact commit, shows which known checks apply and what they will execute, and runs only the one you choose inside a disposable, offline sandbox.</p>
+        <p class="eyebrow"><span data-product-name>{{PRODUCT_NAME}}</span></p>
+        <h1 id="hero-title">{{PRODUCT_TAGLINE}}</h1>
+        <p class="lede">{{PRODUCT_DESCRIPTION}}</p>
+
+        <ol class="flow" aria-label="How it works">
+          <li>Paste link</li><li>Inspect</li><li>Analyze</li><li>Understand</li><li>Preview or download</li><li>Run supported projects</li>
+        </ol>
 
         <form id="inspect-form" class="inspect-form" novalidate>
           <label for="repo-url">Public GitHub repository URL</label>
@@ -43,7 +48,7 @@
           </div>
           <p id="url-error" class="field-error" role="alert" hidden></p>
           <div id="url-help" class="help">
-            <span>Only github.com repositories. Nothing runs until you pick a check and start it.</span>
+            <span>Only public github.com repositories. Inspection reads the code; it never runs it.</span>
             <span id="examples" class="examples" hidden><span id="examples-label">Try:</span></span>
           </div>
         </form>
@@ -51,52 +56,104 @@
 
       <aside class="safety" aria-labelledby="safety-title">
         <h2 id="safety-title">Before anything runs</h2>
-        <p>Repository code and dependency install scripts are untrusted. They are executed only inside an isolated, disposable runner with no network during checks, no access to secrets, and hard limits on time, memory, processes and output. A passing check means the check passed here; it does not mean the code is safe.</p>
+        <p>Inspection and analysis only read the repository. Code from it runs only if you explicitly start a check, and only inside a disposable sandbox that has been verified, with no network during checks, no access to secrets, and hard limits on time, memory, processes and output. No finding, and no passing check, means the code is safe.</p>
       </aside>
 
       <div id="inspect-loading" class="loading" role="status" aria-live="polite" hidden>
         <span class="spinner" aria-hidden="true"></span>
-        <span>Inspecting repository: reading metadata, pinning the commit, downloading and checking the source archive…</span>
+        <span>Inspecting: reading metadata, pinning the commit, downloading and checking the source archive, then analysing it. Large repositories take up to a minute. <span id="inspect-elapsed" class="elapsed"></span></span>
       </div>
 
       <section id="inspection" class="inspection" aria-labelledby="inspection-title" hidden>
-        <div class="step-head">
-          <span class="step-num" aria-hidden="true">1</span>
-          <h2 id="inspection-title" tabindex="-1">Repository</h2>
-        </div>
-        <div id="repo-card" class="repo"></div>
+        <nav class="section-nav" aria-label="Investigation sections">
+          <a href="#sec-overview">Overview</a>
+          <a href="#sec-security">Security <span id="nav-findings" class="count"></span></a>
+          <a href="#sec-deps">Dependencies</a>
+          <a href="#sec-config">Configuration</a>
+          <a href="#sec-setup">Setup</a>
+          <a href="#sec-preview">Preview</a>
+          <a href="#sec-checks">Checks</a>
+          <a href="#sec-report">Report</a>
+        </nav>
 
-        <div class="step-head">
-          <span class="step-num" aria-hidden="true">2</span>
-          <h2 id="checks-title">Choose a check</h2>
-        </div>
-        <div id="detection" class="detection"></div>
-        <form id="run-form" class="run-form" novalidate>
-          <fieldset id="checks-fieldset" class="checks">
-            <legend class="visually-hidden">Proposed checks</legend>
-            <div id="checks-list"></div>
-          </fieldset>
-
-          <div id="confirm-box" class="confirm" hidden>
-            <div class="step-head">
-              <span class="step-num" aria-hidden="true">3</span>
-              <h2 id="confirm-title">Confirm and start</h2>
-            </div>
-            <div id="confirm-plan" class="plan"></div>
-            <label class="ack"><input id="ack-code" type="checkbox"> <span id="ack-code-text"></span></label>
-            <label id="ack-install-row" class="ack" hidden><input id="ack-install" type="checkbox"> <span id="ack-install-text"></span></label>
-            <p id="run-error" class="field-error" role="alert" hidden></p>
-            <div class="actions">
-              <button id="start-btn" class="btn btn-primary" type="submit" disabled aria-describedby="start-help">Start check</button>
-              <span id="start-help" class="help-inline">Tick the confirmation to enable.</span>
-            </div>
+        <div id="sec-overview" class="ws-section">
+          <div class="step-head">
+            <span class="step-num" aria-hidden="true">1</span>
+            <h2 id="inspection-title" tabindex="-1">Repository</h2>
           </div>
-        </form>
+          <div id="repo-card" class="repo"></div>
+          <div id="overview" class="panel-grid"></div>
+        </div>
+
+        <div id="sec-security" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">2</span><h2 id="security-title">Security findings</h2></div>
+          <p id="disclaimer" class="disclaimer"></p>
+          <div id="security-summary" class="sev-summary"></div>
+          <div id="tools" class="tools"></div>
+          <div id="finding-filters" class="filters" role="group" aria-label="Filter findings"></div>
+          <div id="findings" class="findings"></div>
+        </div>
+
+        <div id="sec-deps" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">3</span><h2>Dependencies</h2></div>
+          <div id="deps"></div>
+        </div>
+
+        <div id="sec-config" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">4</span><h2>Configuration, secrets and environment</h2></div>
+          <div id="config"></div>
+        </div>
+
+        <div id="sec-setup" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">5</span><h2>How to run it</h2></div>
+          <div id="setup"></div>
+        </div>
+
+        <div id="sec-preview" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">6</span><h2 id="preview-title">Live preview</h2></div>
+          <div id="preview"></div>
+        </div>
+
+        <div id="sec-checks" class="ws-section">
+          <div class="step-head">
+            <span class="step-num" aria-hidden="true">7</span>
+            <h2 id="checks-title">Choose a check</h2>
+          </div>
+          <div id="tests-info"></div>
+          <div id="detection" class="detection"></div>
+          <form id="run-form" class="run-form" novalidate>
+            <fieldset id="checks-fieldset" class="checks">
+              <legend class="visually-hidden">Proposed checks</legend>
+              <div id="checks-list"></div>
+            </fieldset>
+
+            <div id="confirm-box" class="confirm" hidden>
+              <div class="step-head">
+                <span class="step-num" aria-hidden="true">8</span>
+                <h2 id="confirm-title">Confirm and start</h2>
+              </div>
+              <div id="confirm-plan" class="plan"></div>
+              <label class="ack"><input id="ack-code" type="checkbox"> <span id="ack-code-text"></span></label>
+              <label id="ack-install-row" class="ack" hidden><input id="ack-install" type="checkbox"> <span id="ack-install-text"></span></label>
+              <label id="ack-preview-row" class="ack" hidden><input id="ack-preview" type="checkbox"> <span>Also serve the build output as a live preview when the build succeeds.</span></label>
+              <p id="run-error" class="field-error" role="alert" hidden></p>
+              <div class="actions">
+                <button id="start-btn" class="btn btn-primary" type="submit" disabled aria-describedby="start-help">Start check</button>
+                <span id="start-help" class="help-inline">Tick the confirmation to enable.</span>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div id="sec-report" class="ws-section">
+          <div class="step-head"><span class="step-num" aria-hidden="true">9</span><h2>Investigation report</h2></div>
+          <div id="report" class="report-box"></div>
+        </div>
       </section>
 
       <section id="run" class="run" aria-labelledby="run-title" hidden>
         <div class="step-head">
-          <span class="step-num" aria-hidden="true">4</span>
+          <span class="step-num" aria-hidden="true">▶</span>
           <h2 id="run-title" tabindex="-1">Run</h2>
         </div>
         <div id="chamber" class="chamber" data-state="queued">
@@ -136,8 +193,8 @@
   </div>
 
   <footer class="footer">
-    <p><span data-product-name>{{PRODUCT_NAME}}</span> is a convenience for running untrusted code under constrained isolation. It is not a security scanner, and results are not equivalent to the project’s own CI.</p>
-    <p>Supported: <span id="supported-list">Node.js (npm), Python, Go modules, Rust (Cargo)</span>.</p>
+    <p><span data-product-name>{{PRODUCT_NAME}}</span> reads repositories and reports what it can establish without running them. It is not a guarantee of safety: static analysis misses things and can be wrong, and results apply only to the commit shown.</p>
+    <p>Checks can run for: <span id="supported-list">Node.js (npm), Python, Go modules, Rust (Cargo)</span>. <span data-product-name>{{PRODUCT_NAME}}</span> is a provisional name. Version <span id="app-version"></span>.</p>
   </footer>
 </body>
 </html>

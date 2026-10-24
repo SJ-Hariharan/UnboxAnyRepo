@@ -1,0 +1,144 @@
+# UnboxAnyRepo's own Semgrep rules (MIT, same license as this project).
+# They are deliberately conservative: syntax-aware versions of the built-in
+# heuristics. They do not use the Semgrep Registry, so no network access or
+# registry rule license is involved.
+rules:
+  - id: uar.js.exec-dynamic-command
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: child_process exec/execSync runs a dynamically built command through a shell. If any part comes from input, this allows command injection. Use execFile/spawn with an argument array.
+    metadata: { cwe: "CWE-78", category: command-injection, confidence: MEDIUM }
+    pattern-either:
+      - pattern: exec(`...${$X}...`, ...)
+      - pattern: execSync(`...${$X}...`, ...)
+      - pattern: exec($A + $B, ...)
+      - pattern: execSync($A + $B, ...)
+      - pattern: $CP.exec(`...${$X}...`, ...)
+      - pattern: $CP.execSync(`...${$X}...`, ...)
+      - pattern: $CP.execSync($A + $B, ...)
+  - id: uar.js.sql-template-literal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: SQL text is built with a template literal. Use parameterized queries.
+    metadata: { cwe: "CWE-89", category: sql-injection, confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$X}...`, ...)
+          - pattern: $DB.execute(`...${$X}...`, ...)
+          - pattern: $DB.raw(`...${$X}...`, ...)
+          - pattern: $DB.query($A + $B, ...)
+      - metavariable-regex:
+          metavariable: $DB
+          regex: (?i).*(db|conn|connection|pool|client|knex|sequelize|pg|mysql|sql).*
+  - id: uar.js.eval-dynamic
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: eval or new Function evaluates a non-constant string as code.
+    metadata: { cwe: "CWE-95", category: code-execution, confidence: LOW }
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: new Function(...)
+      - pattern-not: eval("...")
+  - id: uar.py.subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: subprocess with shell=True runs the command through /bin/sh. Pass an argument list without a shell.
+    metadata: { cwe: "CWE-78", category: command-injection, confidence: MEDIUM }
+    patterns:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern-not: subprocess.$F("...", ..., shell=True, ...)
+  - id: uar.py.os-system-dynamic
+    languages: [python]
+    severity: ERROR
+    message: os.system/os.popen with a non-constant command allows command injection.
+    metadata: { cwe: "CWE-78", category: command-injection, confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: os.system($X)
+          - pattern: os.popen($X, ...)
+      - pattern-not: os.system("...")
+      - pattern-not: os.popen("...", ...)
+  - id: uar.py.sql-string-formatting
+    languages: [python]
+    severity: ERROR
+    message: SQL is built with string formatting. Use the driver's parameter substitution.
+    metadata: { cwe: "CWE-89", category: sql-injection, confidence: MEDIUM }
+    pattern-either:
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute("..." % $X, ...)
+      - pattern: $CUR.execute("...".format(...), ...)
+      - pattern: $CUR.execute("..." + $X, ...)
+      - pattern: $CUR.executemany(f"...", ...)
+  - id: uar.py.unsafe-deserialization
+    languages: [python]
+    severity: WARNING
+    message: pickle/marshal deserialization executes code embedded in the data. Only load trusted data.
+    metadata: { cwe: "CWE-502", category: deserialization, confidence: MEDIUM }
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+      - pattern: marshal.loads(...)
+      - pattern: dill.loads(...)
+  - id: uar.py.yaml-unsafe-load
+    languages: [python]
+    severity: WARNING
+    message: yaml.load without a safe loader can construct arbitrary objects. Use yaml.safe_load.
+    metadata: { cwe: "CWE-502", category: deserialization, confidence: MEDIUM }
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+  - id: uar.py.eval-dynamic
+    languages: [python]
+    severity: WARNING
+    message: eval/exec of a non-constant value executes arbitrary Python.
+    metadata: { cwe: "CWE-95", category: code-execution, confidence: LOW }
+    patterns:
+      - pattern-either:
+          - pattern: eval($X, ...)
+          - pattern: exec($X, ...)
+      - pattern-not: eval("...", ...)
+      - pattern-not: exec("...", ...)
+  - id: uar.py.tls-verify-disabled
+    languages: [python]
+    severity: WARNING
+    message: TLS certificate verification is disabled for this request.
+    metadata: { cwe: "CWE-295", category: network, confidence: HIGH }
+    pattern-either:
+      - pattern: requests.$F(..., verify=False, ...)
+      - pattern: httpx.$F(..., verify=False, ...)
+  - id: uar.py.flask-debug
+    languages: [python]
+    severity: WARNING
+    message: Flask debug mode exposes an interactive debugger that allows code execution if reachable.
+    metadata: { cwe: "CWE-489", category: configuration, confidence: MEDIUM }
+    pattern: $APP.run(..., debug=True, ...)
+  - id: uar.go.shell-command
+    languages: [go]
+    severity: ERROR
+    message: exec.Command runs a shell with a non-constant script.
+    metadata: { cwe: "CWE-78", category: command-injection, confidence: MEDIUM }
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command("sh", "-c", $X)
+          - pattern: exec.Command("bash", "-c", $X)
+          - pattern: exec.CommandContext($CTX, "sh", "-c", $X)
+      - pattern-not: exec.Command("sh", "-c", "...")
+      - pattern-not: exec.Command("bash", "-c", "...")
+  - id: uar.go.sql-sprintf
+    languages: [go]
+    severity: ERROR
+    message: SQL is built with fmt.Sprintf. Use placeholders and pass arguments separately.
+    metadata: { cwe: "CWE-89", category: sql-injection, confidence: MEDIUM }
+    pattern-either:
+      - pattern: $DB.Query(fmt.Sprintf(...), ...)
+      - pattern: $DB.QueryRow(fmt.Sprintf(...), ...)
+      - pattern: $DB.Exec(fmt.Sprintf(...), ...)
+  - id: uar.go.tls-insecure-skip-verify
+    languages: [go]
+    severity: WARNING
+    message: InsecureSkipVerify disables TLS certificate checks.
+    metadata: { cwe: "CWE-295", category: network, confidence: HIGH }
+    pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"

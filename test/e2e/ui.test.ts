@@ -46,13 +46,13 @@ async function inspect(page: Page, name: string) {
 test('main flow by keyboard: inspect, choose, confirm, run, read the result', async () => {
   runner.script = { lines: ['running tests\n', '<img src=x onerror="window.__xss=1">\n', 'ok 2 tests\n'], delayMs: 300 };
   const page = await open();
-  assert.ok(await page.getByRole('heading', { name: /Run a repository’s tests/ }).isVisible());
+  assert.ok(await page.getByRole('heading', { name: 'From GitHub link to running project.' }).isVisible());
   assert.ok(await page.getByRole('heading', { name: 'Before anything runs' }).isVisible());
 
   await inspect(page, 'node-hello');
   // Focus moves to the results heading for screen-reader and keyboard users.
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'inspection-title');
-  assert.ok(await page.getByRole('link', { name: 'reporadar-demo/node-hello' }).isVisible());
+  assert.ok(await page.getByRole('link', { name: 'unbox-demo/node-hello' }).isVisible());
   assert.match(await page.locator('.commit-tag code').innerText(), /^[a-f0-9]{40}$/);
 
   await page.getByRole('radio', { name: /npm test/ }).focus();
@@ -65,7 +65,7 @@ test('main flow by keyboard: inspect, choose, confirm, run, read the result', as
 
   const start = page.getByRole('button', { name: 'Start check' });
   assert.equal(await start.isDisabled(), true, 'disabled until confirmed');
-  await page.getByLabel(/I understand that code from reporadar-demo\/node-hello/).check();
+  await page.getByLabel(/I understand that code from unbox-demo\/node-hello/).check();
   assert.equal(await start.isDisabled(), false);
   await start.press('Enter');
 
@@ -75,7 +75,7 @@ test('main flow by keyboard: inspect, choose, confirm, run, read the result', as
   assert.equal(await log.locator('img').count(), 0, 'log output is never rendered as HTML');
   assert.equal(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss), undefined);
   assert.match(await page.locator('#run-result').innerText(), /does not mean the code is safe/);
-  assert.ok(await page.getByRole('button', { name: /reporadar-demo\/node-hello/ }).isVisible(), 'appears in session history');
+  assert.ok(await page.getByRole('button', { name: /unbox-demo\/node-hello/ }).isVisible(), 'appears in session history');
   assert.deepEqual((page as unknown as { __errors: string[] }).__errors, []);
   await page.close();
 });
@@ -200,5 +200,55 @@ test('hidden elements stay hidden (no CSS display rule overrides [hidden])', asy
   await page.getByRole('button', { name: 'Start check' }).click();
   await page.locator('#run-result').waitFor();
   assert.equal(await page.getByRole('button', { name: 'Cancel run' }).isVisible(), false, 'no cancel button after the run ended');
+  await page.close();
+});
+
+test('investigation workspace: overview, findings with filters, setup steps and report downloads', async () => {
+  const page = await open();
+  await inspect(page, 'risky-node-api');
+  assert.match(await page.locator('#overview').innerText(), /Node\.js server application/);
+  assert.match(await page.locator('#overview').innerText(), /Express/);
+  const summary = await page.locator('#security-summary').innerText();
+  assert.match(summary, /1\s*Critical/i);
+  await page.getByRole('button', { name: /^Critical \(1\)$/ }).click();
+  assert.equal(await page.locator('#findings .finding').count(), 1);
+  await page.locator('#findings .finding summary').first().click();
+  assert.match(await page.locator('#findings .finding').first().innerText(), /Risk:[\s\S]*Recommendation:/);
+  await page.getByRole('button', { name: /^All \(/ }).click();
+  assert.ok((await page.locator('#findings .finding').count()) >= 5);
+  await page.getByLabel('Filter by status').selectOption('confirmed');
+  for (const t of await page.locator('#findings .finding').allInnerTexts()) assert.ok(t.length > 0);
+  assert.match(await page.locator('#setup').innerText(), /npm install --ignore-scripts/);
+  assert.match(await page.locator('#setup').innerText(), /run code from this repository/);
+  assert.match(await page.locator('#preview').innerText(), /No live preview/);
+  const md = page.getByRole('link', { name: 'Download Markdown report' });
+  assert.match((await md.getAttribute('href')) ?? '', /^\/api\/inspections\/[a-f0-9]{32}\/report\?format=md$/);
+  const download = await Promise.all([page.waitForEvent('download'), md.click()]);
+  assert.match(download[0].suggestedFilename(), /^unboxanyrepo-unbox-demo-risky-node-api-[a-f0-9]{7}\.md$/);
+  assert.deepEqual((page as unknown as { __errors: string[] }).__errors, []);
+  await page.close();
+});
+
+test('static preview runs inside the dashboard, isolated from the app', async () => {
+  const page = await open();
+  await inspect(page, 'static-site');
+  await page.getByRole('button', { name: 'Start preview' }).click();
+  const frame = page.frameLocator('.preview-frame');
+  await frame.locator('#result').waitFor({ timeout: 10_000 });
+  assert.match(await frame.locator('#result').innerText(), /Tip: 6\.00/);
+  assert.equal(await frame.locator('img').evaluate((i) => (i as HTMLImageElement).naturalWidth > 0), true, 'absolute-path assets load');
+  assert.equal(await frame.locator('body').evaluate(() => { try { void document.cookie; return 'readable'; } catch { return 'blocked'; } }), 'blocked');
+  await page.getByRole('button', { name: 'Stop' }).click();
+  await page.getByText('The preview is not running.').waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Restart preview' }).isVisible());
+  await page.close();
+});
+
+test('mobile: the investigation workspace has no horizontal scrolling', async () => {
+  const page = await open(srv.base, { viewport: { width: 375, height: 800 } });
+  await inspect(page, 'flask-app');
+  await page.locator('#sec-setup').scrollIntoViewIfNeeded();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
   await page.close();
 });

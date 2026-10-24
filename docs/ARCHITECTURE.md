@@ -1,79 +1,75 @@
 # Architecture
 
-RepoRadar is a single Node.js process (no framework, one runtime dependency) that serves a static UI and a small JSON API, and drives a sandbox through a replaceable runner adapter.
+UnboxAnyRepo is one Node.js process (no framework; runtime dependencies: `smol-toml`, `yaml`) that serves a static UI and a JSON API. TypeScript runs directly through Node's type stripping; there is no build step.
 
 ```
- Browser ──HTTPS──▶ ┌──────────────────────────── RepoRadar server (trusted) ───────────────────────────┐
-  (untrusted input)  │                                                                                   │
-                     │  http/            sessions, CSRF checks, strict JSON bodies, rate limits, SSE     │
-                     │  inspect.ts       URL ─▶ metadata ─▶ pinned SHA ─▶ archive ─▶ snapshot ─▶ detect  │
-                     │  github/          url.ts · fetcher.ts · netguard.ts · client.ts ──────────────────┼──▶ api.github.com
-                     │  source/          tar.ts · archive.ts  (parse + sanitize in memory, never on disk)│    codeload.github.com
-                     │  detect/          node · python · go · rust  (pure functions over manifests)      │    (fixed hosts only)
-                     │  checks/          templates.ts  ◀── the ONLY place commands are defined           │
-                     │  runs/            manager (queue, quotas, watchdog), logs (sanitize, redact, cap) │
-                     │  runner/          Runner interface ─┬─ DisabledRunner (default, fails closed)     │
-                     │                                     └─ DockerRunner (gVisor runsc)               │
-                     └──────────────────────────────────────────────┬────────────────────────────────────┘
-                                                                    │ docker CLI (argv only, minimal env)
-                                                                    ▼
-                     ┌───────────────────── Sandbox host (dedicated, holds no app secrets) ──────────────┐
-                     │  per run: tmpfs volume (size-capped)  +  keeper / prepare / step containers       │
-                     │  every container: runsc, uid 65532, cap-drop ALL, no-new-privileges, read-only    │
-                     │  rootfs, memory/CPU/PID/fd limits, no host mounts, no docker socket               │
-                     │  check steps:   --network none                                                    │
-                     │  install steps: internal "fetch" network ──▶ egress proxy ──▶ allowlisted         │
-                     │                                            (CONNECT :443 only)  package registries│
-                     └───────────────────────────────────────────────────────────────────────────────────┘
+Browser (app origin) ──HTTPS──▶ UnboxAnyRepo server
+   │                               │ 1. validate URL, pin commit        ──▶ api.github.com, codeload.github.com
+   │                               │ 2. sanitize archive in memory          (fixed hosts, HTTPS:443, public IPs only)
+   │                               │ 3. analyse (static)                ──▶ api.osv.dev (exact versions only)
+   │                               │      └─ optional: Semgrep, Gitleaks on a private temp copy of text files
+   │                               │ 4. report (Markdown / JSON)
+   │                               │ 5. static preview from the snapshot
+   │                               │ 6. checks / build previews ────────▶ Docker CLI ──▶ sandbox host (gVisor), only if verified
+   │
+Browser (preview origin: <token>.<preview-domain>, opaque origin via CSP sandbox)
+   └── receives only preview files; never the app, the API or a session cookie
 ```
 
-## Modules and responsibilities
+## Trust boundaries
 
-| Area | Files | Responsibility |
+| Boundary | Treated as | Controls |
 |---|---|---|
-| Config | `src/config.ts` | Parse and validate every environment variable once. Invalid config stops startup. |
-| Web/API | `src/app.ts`, `src/http/*` | Routing, sessions, CSRF, body limits, rate limits, SSE, security headers, static assets. |
-| GitHub | `src/github/*` | Parse repo URLs; fetch metadata and pin a commit; download the archive with size/time limits. |
-| Source | `src/source/*` | Streaming tar reader/writer; sanitize the archive into a clean tar.gz rooted at `src/`. |
-| Detection | `src/detect/*` | Read a few small root manifests (as hostile input) and produce typed facts. |
-| Checks | `src/checks/*` | Turn facts into allowlisted check plans with constant argv arrays. |
-| Runs | `src/runs/*` | Run lifecycle, queue, per-session ownership, cancellation, watchdog, retention, logs. |
-| Runner | `src/runner/*` | Execute a plan in a sandbox. Replaceable: the UI and API only see the `Runner` interface. |
-| Egress proxy | `src/egress-proxy/*` | Optional CONNECT proxy that lets install steps reach package registries only. |
-| Demo | `src/demo/*`, `fixtures/demo-repos/*` | Offline GitHub stand-in serving bundled, safe fixtures. |
-| UI | `public/*` | Static HTML/CSS and one plain JS module; all untrusted text is inserted with `textContent`. |
+| Browser → server | hostile | strict URL parsing, JSON-only bodies with allowlisted fields, CSRF checks, per-session ownership of every object, rate limits |
+| GitHub → server | hostile | fixed hosts, DNS-pinned public IPs, re-validated redirects, size/time caps, field validation |
+| Archive contents | hostile | streaming sanitizer: traversal/symlink/device/hard-link rejection, size and count caps; never extracted on the server (except the scanner temp copy, below) |
+| Repository files → analysers | hostile | bounded reads, YAML alias limits, TOML/JSON parse errors reported, no evaluation of any content |
+| Scanner temp copy | hostile data on disk | fresh 0700 directory, files written exclusively from validated paths, minimal environment, timeout kills the process group, always deleted |
+| OSV.dev → server | untrusted data | fixed host, POST without redirects, size caps; only https references are linked |
+| Preview content → browser | hostile code | separate origin when configured; `Content-Security-Policy: sandbox` without `allow-same-origin` (opaque origin); no cookies set or accepted; capability tokens that expire |
+| Server → sandbox | trusted commands, hostile output | constant argv templates; see the runner below |
 
-## Request flow
+## Modules
 
-1. **Inspect** (`POST /api/inspect {url}`): parse URL → `GET /repos/{owner}/{repo}` (must be public) → resolve the default branch head (or verify a SHA from the URL) → download `codeload.github.com/{owner}/{repo}/tar.gz/{sha}` → sanitize in memory → detect → store the inspection (session-bound, 15 min default) → return metadata, the pinned SHA, detection results and the exact plan of every check.
-2. **Run** (`POST /api/runs {inspectionId, checkId, acknowledged: true}`): the server re-derives the plan from its own stored detection; the client only names an allowlisted check id. Quotas and runner availability are checked, then the run is queued.
-3. **Execute**: the runner creates a size-capped tmpfs volume, streams the sanitized source into it from inside the sandbox, then runs each step in a fresh container. On success, failure, timeout or cancellation every container and the volume are force-removed, and removal is verified.
-4. **Observe** (`GET /api/runs/:id/events`, SSE): state changes and log lines in batches; the final retained log replaces the live view at the end. The UI falls back to polling if the stream drops.
+| Path | Responsibility |
+|---|---|
+| `src/brand.ts` | Product name, tagline, description, version (one place to rename) |
+| `src/config.ts` | All environment configuration, validated at startup |
+| `src/github/` | URL parsing, guarded HTTPS client (also used for OSV), GitHub API client |
+| `src/source/` | tar reader/writer and the archive sanitizer; collects bounded text for analysis (code first, docs/data in a smaller budget) |
+| `src/detect/`, `src/checks/` | ecosystem detection and the allowlisted check templates (for sandbox checks) |
+| `src/analysis/` | the investigation: `stack`, `structure`, `infra` (Docker/Compose/CI/env), `deps` (lockfiles), `launch` (setup plan, ports, services, preview eligibility, compatibility), `rules/` (secrets, code, configuration), `osv`, `scanners`, `index` (orchestration, de-duplication, grouping) |
+| `src/report/` | Markdown and JSON reports with escaping of all repository text |
+| `src/preview/` | preview store (tokens, ownership, expiry, memory caps), tar extraction for previews, health checks, response headers |
+| `src/runner/` | sandbox runner interface, Docker implementation, factory (fails closed), verification (gVisor probe + recorded test run) |
+| `src/runs/` | run lifecycle, queue, logs (sanitized, redacted, capped), inspection store |
+| `src/app.ts` | HTTP routing, preview hosts, SSE |
+| `scripts/sandbox.ts` | operator diagnostics and verification (`npm run sandbox`) |
+| `public/` | UI (plain DOM, text-only insertion, strict CSP) |
 
-## Runner adapter contract
+## Analysis pipeline
 
-```ts
-interface Runner {
-  status(force?: boolean): Promise<RunnerStatus>; // available? isolation? per-ecosystem images? dependency fetch?
-  execute(req: ExecuteRequest): Promise<ExecuteResult>; // succeeded | failed | timed_out | cancelled | unavailable
-  sweep?(): Promise<void>; // remove leftovers, never touching in-flight runs
-}
-```
+1. **Snapshot.** The archive is sanitized once. Text files up to `UNBOX_ANALYSIS_MAX_FILE_KB` are kept until `UNBOX_ANALYSIS_MAX_TOTAL_MB`; docs, data and fixtures share a quarter of that budget so they cannot crowd out source code; lockfiles get a larger per-file allowance. Coverage (what was skipped and why) is part of the result.
+2. **Facts.** Stack, structure, scripts, Docker/Compose/CI, environment variable names, tests, dependency inventory.
+3. **Plan.** Project kind, local setup commands from fixed templates (never from README files), ports, backing services, compatibility notes, preview eligibility.
+4. **Findings.** Built-in rules always run. OSV.dev, GitHub advisories, Semgrep and Gitleaks run when enabled and available; each reports `ran`, `not_installed`, `disabled`, `failed`, `timed_out` or `skipped`, and nothing falls back silently. Findings get stable IDs (rule + file + normalized evidence), are de-duplicated (the more precise tool wins), repeated matches in one file are grouped, and secrets are redacted before they are stored.
 
-A new adapter (Firecracker microVMs, a hosted sandbox API, Kubernetes with gVisor/Kata) needs only these three methods. It must fail closed: report `available: false` with a user-safe reason rather than degrading isolation.
+## Previews
 
-## State and retention
+- **Static:** files under the preview root of the sanitized snapshot are held in memory and served read-only.
+- **Build:** a build check runs in the verified sandbox; afterwards a constant `tar -c` container copies the output directory out (size-capped), and it is served the same way. Without a verified sandbox this path is unavailable.
+- **Not supported:** server applications (they need a long-running process with network access).
+- Each preview has a 128-bit token, an owning session, an expiry, stop/restart, a per-session limit and a global memory cap. On a preview host only that preview's files are served; the app and API are not reachable there.
 
-All state is in memory in one process:
+## Runner and verification
 
-- inspections, including the sanitized source archive: 15 minutes, evicted earlier under memory pressure (512 MB cap);
-- runs and their retained logs (first 256 KB plus last 64 KB): 1 hour after they finish;
-- nothing is written to disk by the server. A restart forgets everything.
+`createRunner` returns a disabled runner unless `UNBOX_RUNNER=docker`. With `runsc`, `status()` additionally requires:
 
-Because state is in memory, run exactly one server process per deployment (see [DEPLOYMENT.md](DEPLOYMENT.md)).
+1. a live probe: a constant container under `--runtime runsc` prints its kernel log, which must identify gVisor; and
+2. a verification record written by `npm run sandbox -- --verify` after every required real-container test passed, for the same Docker host, runtime and image IDs, newer than `UNBOX_SANDBOX_VERIFICATION_MAX_AGE_DAYS`.
 
-## Why these choices
+The record cannot be produced by configuration. Changing or re-pulling an image disables that ecosystem until verification is repeated. `runc` remains a labelled development mode (explicit acknowledgement, refused in production) and can never be verified.
 
-- **No framework, one runtime dependency (`smol-toml`).** The attack surface of the trusted side stays small and auditable; Node's built-in type stripping runs the TypeScript directly, so there is no build step.
-- **Own tar reader.** Archive handling is a core security boundary; a small, strict, fully tested parser that never touches the filesystem is easier to reason about than a general extractor.
-- **Docker + gVisor first.** It is widely available, works on a single VM, and gVisor's user-space kernel is a materially stronger boundary than plain containers. The adapter interface leaves room for microVMs.
+## State
+
+All state is in memory: inspections (15 min), previews (30 min), runs (1 h), sessions and rate limits. Run exactly one process. Nothing is written to disk except the scanner temp copy (deleted after each scan) and the verification record (written only by the operator command).

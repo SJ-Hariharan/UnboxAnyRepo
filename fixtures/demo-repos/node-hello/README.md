@@ -1,3 +1,3 @@
 # node-hello
 
-Demo fixture bundled with RepoRadar. Safe to run: it only adds numbers.
+Demo fixture bundled with UnboxAnyRepo. Safe to run: it only adds numbers.

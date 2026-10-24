@@ -30,8 +30,10 @@ import { SANDBOX_UID } from '../source/archive.ts';
 import { WORK } from '../checks/templates.ts';
 import type { CommandExecutor } from './exec.ts';
 import type { ExecuteRequest, ExecuteResult, Runner, RunnerStatus, Isolation } from './types.ts';
+import { loadAttestation, checkAttestation, isGvisorKernelLog } from './verify.ts';
+import type { Attestation, VerificationOptions } from './verify.ts';
 
-export const MANAGED_LABEL = 'reporadar.managed=1';
+export const MANAGED_LABEL = 'unbox.managed=1';
 const ECOSYSTEMS: Ecosystem[] = ['node', 'python', 'go', 'rust'];
 const PREPARE_TIMEOUT_MS = 120_000;
 const DOCKER_CMD_TIMEOUT_MS = 30_000;
@@ -52,6 +54,7 @@ export interface ContainerSpec {
 }
 
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const SAFE_DIR_RE = /^[A-Za-z0-9._-]{1,60}(\/[A-Za-z0-9._-]{1,60}){0,5}$/;
 
 /** Build the `docker run` argument vector. Pure; unit-tested. */
 export function buildRunArgs(spec: ContainerSpec): string[] {
@@ -63,7 +66,7 @@ export function buildRunArgs(spec: ContainerSpec): string[] {
     ...(spec.interactive ? ['-i'] : []),
     '--name', spec.name,
     '--label', MANAGED_LABEL,
-    '--label', `reporadar.run=${spec.tag}`,
+    '--label', `unbox.run=${spec.tag}`,
     '--runtime', spec.runtime,
     '--pull', 'never',
     '--network', spec.network,
@@ -99,6 +102,20 @@ export interface DockerRunnerOptions {
   isolation: Isolation;
   exec: CommandExecutor;
   statusTtlMs?: number;
+  /** Required for the strong runtime outside tests: see runner/verify.ts. */
+  verification: VerificationOptions | { required: false };
+  /** Test hook. */
+  loadAttestation?: () => Attestation | undefined;
+}
+
+/** Constant, harmless probe: print the sandbox kernel log. gVisor identifies itself there. */
+export function gvisorProbeArgs(runtime: string, image: string): string[] {
+  return [
+    'run', '--rm', '--runtime', runtime, '--pull', 'never', '--network', 'none',
+    '--user', `${SANDBOX_UID}:${SANDBOX_UID}`, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges=true',
+    '--read-only', '--memory', '256m', '--memory-swap', '256m', '--pids-limit', '64', '--log-driver', 'none',
+    '--label', MANAGED_LABEL, '--entrypoint', 'dmesg', image,
+  ];
 }
 
 export class DockerRunner implements Runner {
@@ -108,6 +125,8 @@ export class DockerRunner implements Runner {
   private readonly isolation: Isolation;
   private readonly exec: CommandExecutor;
   private readonly statusTtlMs: number;
+  private readonly verification: DockerRunnerOptions['verification'];
+  private readonly loadAtt: () => Attestation | undefined;
   private cached: { at: number; status: RunnerStatus } | null = null;
   /** Tags of runs executing in this process; the sweeper never touches these. */
   private readonly active = new Set<string>();
@@ -118,6 +137,9 @@ export class DockerRunner implements Runner {
     this.isolation = opts.isolation;
     this.exec = opts.exec;
     this.statusTtlMs = opts.statusTtlMs ?? 30_000;
+    this.verification = opts.verification;
+    const v = opts.verification;
+    this.loadAtt = opts.loadAttestation ?? (() => ('file' in v ? loadAttestation(v.file) : undefined));
   }
 
   private label(): string {
@@ -172,9 +194,34 @@ export class DockerRunner implements Runner {
     }
 
     const ecosystems = { ...none };
+    const imageIds: Partial<Record<Ecosystem, string>> = {};
     for (const eco of ECOSYSTEMS) {
       const r = await this.docker(['image', 'inspect', '--format', '{{.Id}}', this.cfg.images[eco]]);
       ecosystems[eco] = r.code === 0 ? { available: true } : { available: false, reason: `The ${eco} sandbox image is not installed on the sandbox host.` };
+      if (r.code === 0) imageIds[eco] = r.stdout.trim();
+    }
+
+    // Strong isolation must be demonstrated, not assumed from a runtime name.
+    let verification: RunnerStatus['verification'] = { gvisorProbe: 'not_applicable', recorded: 'not_required' };
+    if (this.cfg.runtime === 'runsc') {
+      const probeImage = ECOSYSTEMS.map((e) => (ecosystems[e].available ? this.cfg.images[e] : undefined)).find(Boolean);
+      if (!probeImage) return { ...base, reason: 'No sandbox images are installed on the sandbox host.' };
+      const probe = await this.docker(gvisorProbeArgs('runsc', probeImage), 60_000);
+      if (probe.code !== 0 || !isGvisorKernelLog(probe.stdout)) {
+        return { ...base, reason: 'The runtime named "runsc" did not identify itself as gVisor in a test container, so execution is disabled.', verification: { gvisorProbe: 'failed', recorded: 'not_required' } };
+      }
+      verification = { gvisorProbe: 'passed', recorded: 'not_required' };
+      if (this.verification.required) {
+        const att = this.loadAtt();
+        const check = checkAttestation(att, { dockerHost: this.cfg.dockerHost ?? null, imageIds }, 'maxAgeDays' in this.verification ? this.verification.maxAgeDays : 30);
+        verification = { gvisorProbe: 'passed', recorded: check.ok.length ? 'valid' : 'missing_or_invalid', ...(att ? { recordedAt: att.createdAt } : {}) };
+        if (check.ok.length === 0) return { ...base, reason: check.reason ?? 'The sandbox has not been verified.', verification };
+        for (const eco of ECOSYSTEMS) {
+          if (ecosystems[eco].available && !check.ok.includes(eco)) {
+            ecosystems[eco] = { available: false, reason: `The ${eco} sandbox image changed since the sandbox was verified. Re-run "npm run sandbox -- --verify".` };
+          }
+        }
+      }
     }
 
     let dependencyFetch = false;
@@ -194,6 +241,7 @@ export class DockerRunner implements Runner {
     const anyImage = ECOSYSTEMS.some((e) => ecosystems[e].available);
     return {
       ...base,
+      verification,
       available: anyImage,
       ...(anyImage ? {} : { reason: 'No sandbox images are installed on the sandbox host.' }),
       dependencyFetch,
@@ -205,8 +253,8 @@ export class DockerRunner implements Runner {
   async execute(req: ExecuteRequest): Promise<ExecuteResult> {
     const tag = randomBytes(8).toString('hex');
     this.active.add(tag);
-    const volume = `reporadar-${tag}`;
-    const keeper = `reporadar-${tag}-keeper`;
+    const volume = `unbox-${tag}`;
+    const keeper = `unbox-${tag}-keeper`;
     const names: string[] = [keeper];
     const image = this.cfg.images[req.ecosystem];
     const spec = (name: string, argv: readonly string[], env: Record<string, string>, network: string, workdir: string) => ({
@@ -231,7 +279,7 @@ export class DockerRunner implements Runner {
         'volume', 'create', '--driver', 'local',
         '--opt', 'type=tmpfs', '--opt', 'device=tmpfs',
         '--opt', `o=size=${this.limits.runWorkspaceMiB}m,uid=${SANDBOX_UID},gid=${SANDBOX_UID},mode=0700`,
-        '--label', MANAGED_LABEL, '--label', `reporadar.run=${tag}`,
+        '--label', MANAGED_LABEL, '--label', `unbox.run=${tag}`,
         volume,
       ]);
       if (vol.code !== 0) return (result = { outcome: 'unavailable', failedStep: 'prepare', message: 'The sandbox could not create a workspace.', cleanup: 'not_needed' });
@@ -240,7 +288,7 @@ export class DockerRunner implements Runner {
       if (keep.code !== 0) return (result = { outcome: 'unavailable', failedStep: 'prepare', message: 'The sandbox could not start.', cleanup: 'not_needed' });
 
       // Unpack the sanitized source inside the sandbox (never on this host).
-      const prepName = `reporadar-${tag}-prepare`;
+      const prepName = `unbox-${tag}-prepare`;
       names.push(prepName);
       const prepArgs = buildRunArgs({
         ...spec(prepName, ['tar', '-x', '-f', '-', '-C', WORK.root, '--no-same-owner'], {}, 'none', WORK.root),
@@ -268,7 +316,7 @@ export class DockerRunner implements Runner {
           network = this.cfg.fetchNetwork;
           Object.assign(env, { HTTPS_PROXY: this.cfg.fetchProxyUrl, https_proxy: this.cfg.fetchProxyUrl, NO_PROXY: '', no_proxy: '' });
         }
-        const name = `reporadar-${tag}-s${i}`;
+        const name = `unbox-${tag}-s${i}`;
         names.push(name);
         const timeoutSec = step.kind === 'install' ? this.limits.installTimeoutSec : this.limits.checkTimeoutSec;
         const r = await this.runContainer(name, buildRunArgs(spec(name, step.argv, env, network, WORK.src)), timeoutSec * 1000, req, {});
@@ -287,7 +335,24 @@ export class DockerRunner implements Runner {
           });
         }
       }
-      return (result = { outcome: 'succeeded', exitCode: 0, cleanup: 'not_needed' });
+      result = { outcome: 'succeeded', exitCode: 0, cleanup: 'not_needed' };
+      if (req.collect) {
+        const dir = req.collect.dir;
+        if (!SAFE_DIR_RE.test(dir) || dir.split('/').includes('..')) {
+          result.artifactError = 'The build output directory is not a plain relative path.';
+          return result;
+        }
+        req.onSystem(`Collecting build output from ${dir}/`);
+        const name = `unbox-${tag}-collect`;
+        names.push(name);
+        const args = buildRunArgs(spec(name, ['tar', '-c', '-f', '-', '-C', `${WORK.src}/${dir}`, '.'], {}, 'none', WORK.root));
+        const c = await this.captureContainer(name, args, PREPARE_TIMEOUT_MS, req, req.collect.maxBytes);
+        if (c.kind === 'cancelled') return (result = this.interrupted('cancelled', 'check'));
+        if (c.kind === 'too_large') result.artifactError = `The build output is larger than the ${Math.round(req.collect.maxBytes / 1048576)} MB preview limit.`;
+        else if (c.kind === 'exited' && c.code === 0) result.artifact = c.data;
+        else result.artifactError = `The build did not produce ${dir}/, or it could not be read.`;
+      }
+      return result;
     } finally {
       result.cleanup = await this.cleanup(tag, names, volume);
       this.active.delete(tag);
@@ -295,6 +360,40 @@ export class DockerRunner implements Runner {
         req.onSystem('Sandbox cleanup could not be confirmed; leftovers will be removed by the periodic sweep.');
       }
     }
+  }
+
+  /** Run a container and capture its stdout (bounded), for build artifacts. */
+  private async captureContainer(
+    name: string,
+    args: string[],
+    timeoutMs: number,
+    req: ExecuteRequest,
+    maxBytes: number,
+  ): Promise<{ kind: 'exited'; code: number | null; data: Buffer } | { kind: 'timeout' | 'cancelled' | 'too_large' }> {
+    const p = this.exec.spawn(this.cfg.dockerBin, args);
+    p.stdin.end();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let stopped: 'timeout' | 'cancelled' | 'too_large' | null = null;
+    const stop = (why: 'timeout' | 'cancelled' | 'too_large') => {
+      if (stopped) return;
+      stopped = why;
+      void this.docker(['rm', '-f', name]).finally(() => p.kill());
+    };
+    p.stdout.on('data', (c: Buffer) => {
+      size += c.length;
+      if (size > maxBytes) stop('too_large');
+      else chunks.push(c);
+    });
+    p.stderr.on('data', () => {});
+    const timer = setTimeout(() => stop('timeout'), timeoutMs);
+    const onAbort = () => stop('cancelled');
+    req.signal.addEventListener('abort', onAbort, { once: true });
+    const code = await p.exited;
+    clearTimeout(timer);
+    req.signal.removeEventListener('abort', onAbort);
+    if (stopped) return { kind: stopped };
+    return { kind: 'exited', code, data: Buffer.concat(chunks, size) };
   }
 
   private interrupted(kind: 'timeout' | 'cancelled', step: 'prepare' | 'install' | 'check', timeoutSec?: number): ExecuteResult {
@@ -358,22 +457,22 @@ export class DockerRunner implements Runner {
   private async cleanup(tag: string, names: string[], volume: string): Promise<'confirmed' | 'unconfirmed'> {
     await this.docker(['rm', '-f', ...names]);
     await this.docker(['volume', 'rm', '-f', volume]);
-    const ps = await this.docker(['ps', '-a', '-q', '--filter', `label=reporadar.run=${tag}`]);
-    const vols = await this.docker(['volume', 'ls', '-q', '--filter', `label=reporadar.run=${tag}`]);
+    const ps = await this.docker(['ps', '-a', '-q', '--filter', `label=unbox.run=${tag}`]);
+    const vols = await this.docker(['volume', 'ls', '-q', '--filter', `label=unbox.run=${tag}`]);
     const clean = ps.code === 0 && vols.code === 0 && ps.stdout.trim() === '' && vols.stdout.trim() === '';
     return clean ? 'confirmed' : 'unconfirmed';
   }
 
   async sweep(): Promise<void> {
     const activeTags = this.active;
-    const ps = await this.docker(['ps', '-a', '--filter', `label=${MANAGED_LABEL}`, '--format', '{{.Names}}\t{{.Label "reporadar.run"}}']);
+    const ps = await this.docker(['ps', '-a', '--filter', `label=${MANAGED_LABEL}`, '--format', '{{.Names}}\t{{.Label "unbox.run"}}']);
     if (ps.code === 0) {
       const stale = ps.stdout
         .split('\n')
         .map((l) => l.split('\t'))
         .filter(([n, t]) => n && t && /^[a-f0-9]{16}$/.test(t) && !activeTags.has(t))
         .map(([n]) => n as string)
-        .filter((n) => /^reporadar-[a-f0-9]{16}-[a-z0-9]+$/.test(n));
+        .filter((n) => /^unbox-[a-f0-9]{16}-[a-z0-9]+$/.test(n));
       if (stale.length > 0) await this.docker(['rm', '-f', ...stale]);
     }
     const vols = await this.docker(['volume', 'ls', '--filter', `label=${MANAGED_LABEL}`, '--format', '{{.Name}}']);
@@ -381,7 +480,7 @@ export class DockerRunner implements Runner {
       const stale = vols.stdout
         .split('\n')
         .map((v) => v.trim())
-        .filter((v) => /^reporadar-[a-f0-9]{16}$/.test(v) && !activeTags.has(v.slice('reporadar-'.length)));
+        .filter((v) => /^unbox-[a-f0-9]{16}$/.test(v) && !activeTags.has(v.slice('unbox-'.length)));
       if (stale.length > 0) await this.docker(['volume', 'rm', '-f', ...stale]);
     }
   }

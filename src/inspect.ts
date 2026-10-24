@@ -2,7 +2,10 @@
  * Inspection pipeline: URL → metadata → pinned commit → bounded archive →
  * sanitized snapshot → detection. Never executes anything.
  */
-import type { Limits } from './config.ts';
+import type { Limits, AnalysisConfig } from './config.ts';
+import { analyseRepository } from './analysis/index.ts';
+import { textSkipReason, looksBinary, isSecondaryText } from './analysis/paths.ts';
+import type { Transport } from './github/fetcher.ts';
 import { parseRepoUrl, RepoUrlError } from './github/url.ts';
 import { GitHubError } from './github/client.ts';
 import type { GitHubClient } from './github/client.ts';
@@ -27,6 +30,9 @@ export interface InspectServiceOptions {
   store: InspectionStore;
   limits: Limits;
   goImage: string;
+  analysis: AnalysisConfig;
+  userAgent: string;
+  osvTransport?: Transport;
 }
 
 export class InspectService {
@@ -65,9 +71,38 @@ export class InspectService {
           maxFiles: limits.archiveMaxFiles,
           maxFileBytes: limits.archiveMaxFileBytes,
         },
-        { expectedSha: sha },
+        {
+          expectedSha: sha,
+          collectText: {
+            maxTotalBytes: limits.analysisMaxTotalBytes,
+            maxSecondaryBytes: Math.floor(limits.analysisMaxTotalBytes / 4),
+            isSecondary: isSecondaryText,
+            skipReason: (p, size) => textSkipReason(p, size, limits.analysisMaxFileBytes),
+            isBinary: looksBinary,
+          },
+        },
       );
       const detection = detectProject(snap, { goImage: this.opts.goImage });
+      const analysis = await analyseRepository(
+        {
+          files: snap.files,
+          dirs: snap.dirs,
+          texts: snap.texts,
+          textStats: snap.textStats,
+          totalBytes: snap.totalBytes,
+          skippedSymlinks: snap.skippedSymlinkCount,
+          repo: { fullName: meta.fullName, htmlUrl: meta.htmlUrl, name: meta.name },
+          commitSha: sha,
+          ...(github.listAdvisories ? { listAdvisories: (s?: AbortSignal) => github.listAdvisories!(meta, s) } : {}),
+        },
+        {
+          config: this.opts.analysis,
+          limits,
+          userAgent: this.opts.userAgent,
+          ...(signal ? { signal } : {}),
+          ...(this.opts.osvTransport ? { osvTransport: this.opts.osvTransport } : {}),
+        },
+      );
       const notices: string[] = [];
       if (ref.notice) notices.push(ref.notice);
       if (ref.pinnedSha) notices.push('Commits selected by SHA may come from any fork in the repository network.');
@@ -86,6 +121,7 @@ export class InspectService {
           skippedSymlinks: snap.skippedSymlinks,
         },
         detection,
+        analysis,
         sanitizedTarGz: snap.sanitizedTarGz,
       });
     } catch (err) {
