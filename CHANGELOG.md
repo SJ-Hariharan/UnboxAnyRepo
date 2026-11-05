@@ -76,5 +76,5 @@ Initial MVP as **RepoRadar**.
   - A port that is already in use is now reported clearly instead of crashing.
   - Validation report added in [docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md).
 
-[Unreleased]: https://github.com/SJ-Hariharan/UnboxAnyRepo/compare/4b1b442...HEAD
-[0.2.0]: https://github.com/SJ-Hariharan/UnboxAnyRepo/tree/4b1b442
+[Unreleased]: https://github.com/SJ-Hariharan/UnboxAnyRepo/compare/4ed942f...HEAD
+[0.2.0]: https://github.com/SJ-Hariharan/UnboxAnyRepo/tree/4ed942f

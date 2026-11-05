@@ -1,6 +1,6 @@
 # Release readiness report — UnboxAnyRepo 0.2.0 (2026-10-24)
 
-Work done on top of commit `2b9f8e8` (the validated RepoRadar MVP) on macOS 15.5 (Apple Silicon), Node.js 22.23.2, Docker Desktop 29.7.2 with `runc` only. The code is in commit `4b1b442`; release documentation was completed in the following commit and pushed to <https://github.com/SJ-Hariharan/UnboxAnyRepo> on 2026-11-05. No release tag, package or deployment has been published.
+Work done on top of commit `bf34015` (the validated RepoRadar MVP) on macOS 15.5 (Apple Silicon), Node.js 22.23.2, Docker Desktop 29.7.2 with `runc` only. The code is in commit `4ed942f`; release documentation was completed in the following commit and pushed to <https://github.com/SJ-Hariharan/UnboxAnyRepo> on 2026-11-05. No release tag, package or deployment has been published.
 
 ## 1. Files changed
 

@@ -2,7 +2,7 @@
 
 # Validation report — 2026-10-22
 
-Takeover validation of the RepoRadar MVP (commit `b74521b`) on macOS 15 (Darwin 24.5, Apple Silicon), Node.js 22.23.2, npm 10.9.8, Docker Desktop with `runc` only (no gVisor).
+Takeover validation of the RepoRadar MVP (commit `d2ac666`) on macOS 15 (Darwin 24.5, Apple Silicon), Node.js 22.23.2, npm 10.9.8, Docker Desktop with `runc` only (no gVisor).
 
 ## Summary
 
