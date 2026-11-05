@@ -1,6 +1,6 @@
 # Release readiness report — UnboxAnyRepo 0.2.0 (2026-10-24)
 
-Work done on top of commit `2b9f8e8` (the validated RepoRadar MVP) on macOS 15.5 (Apple Silicon), Node.js 22.23.2, Docker Desktop 29.7.2 with `runc` only. Nothing has been committed, pushed, published or deployed.
+Work done on top of commit `2b9f8e8` (the validated RepoRadar MVP) on macOS 15.5 (Apple Silicon), Node.js 22.23.2, Docker Desktop 29.7.2 with `runc` only. The code is in commit `4b1b442`; release documentation was completed in the following commit and pushed to <https://github.com/SJ-Hariharan/UnboxAnyRepo> on 2026-11-05. No release tag, package or deployment has been published.
 
 ## 1. Files changed
 
@@ -28,7 +28,8 @@ About 105 files: 55 modified, the rest new (plus 16 regenerated screenshots).
 - **Fixtures:** `fixtures/demo-repos/static-site`, `vite-app`, `flask-app`, `risky-node-api`.
 - **Release and deployment:** `LICENSE`, `render.yaml`, `Dockerfile`, `.dockerignore`, `.github/workflows/ci.yml`, `.env.example`, `package.json`/`package-lock.json` (adds `yaml`).
 - **Docs:**
-  - `README.md`, `SECURITY.md`, `CONTRIBUTING.md`
+  - `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, new `CHANGELOG.md`
+  - new `docs/API.md` (HTTP API reference) and `docs/README.md` (index)
   - `docs/ARCHITECTURE.md`, `docs/THREAT_MODEL.md`, `docs/DEPLOYMENT.md`, `docs/LAUNCH.md`
   - new `docs/SUPPORTED.md`
 - **Rebrand:** RepoRadar → UnboxAnyRepo. The config prefix changed from `REPORADAR_` to `UNBOX_`, plus the Docker labels and the demo owner.
@@ -129,18 +130,19 @@ They work for **static sites** and **committed build output**, tested with the `
 
 ## 8. Remaining release blockers
 
-1. The security contact in `SECURITY.md` and the conduct contact in `CODE_OF_CONDUCT.md` are placeholders.
-2. The repository URL in the README is a placeholder, and there is no Git remote.
-3. The `LICENSE` copyright holder is "The UnboxAnyRepo contributors". Confirm or replace it.
-4. The name UnboxAnyRepo is provisional and its availability is unchecked.
-5. Nothing is committed.
-6. CI has not run on GitHub.
-7. The real-container tests have never run on gVisor.
+Resolved since the first draft of this report: the code is committed; the repository URL, security contact and conduct contact now point to the GitHub repository and its maintainer; the name is the repository's name.
+
+1. **GitHub private vulnerability reporting** must be enabled in the repository settings; `SECURITY.md` links to it.
+2. **CI** must pass on GitHub (see the Actions tab after the push).
+3. The **real-container tests have never run on gVisor**, so execution stays off everywhere until `npm run sandbox -- --verify` passes on a Linux gVisor host.
+4. The `LICENSE` copyright holder is "The UnboxAnyRepo contributors". Replace it with a person or organisation if you prefer.
+5. Domain, handle and trademark availability of "UnboxAnyRepo" is unchecked.
+6. No `v0.2.0` tag or GitHub release exists yet.
 
 ## 9. Next actions for the maintainer
 
-1. Review the diff, then commit (and create a GitHub repository if you want CI).
-2. Fill in the contacts, repository URL and copyright holder, and decide on the name.
-3. Push, confirm both CI jobs pass, then enable GitHub private vulnerability reporting.
+1. Check the Actions tab: both CI jobs should be green. Fix anything Linux-specific that fails.
+2. Enable private vulnerability reporting, and set the description and topics from `docs/LAUNCH.md`.
+3. Tag `v0.2.0` and publish release notes from `CHANGELOG.md`.
 4. To publish an inspection-only demo: create a Render account and apply `render.yaml`. Then add `GITHUB_TOKEN`, set `UNBOX_PUBLIC_ORIGIN`, and test it.
 5. To offer execution: provision a Linux + gVisor host, then run `node scripts/pull-images.ts` and `npm run sandbox -- --verify` there.

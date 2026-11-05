@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/OWNER/REPO/security/advisories/new
-    about: Please report vulnerabilities privately (see SECURITY.md). Replace OWNER/REPO before launch.
+    url: https://github.com/SJ-Hariharan/UnboxAnyRepo/security/advisories/new
+    about: Please report vulnerabilities privately (see SECURITY.md).

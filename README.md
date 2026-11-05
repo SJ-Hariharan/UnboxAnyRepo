@@ -2,6 +2,8 @@
 
 **From GitHub link to running project.**
 
+[![CI](https://github.com/SJ-Hariharan/UnboxAnyRepo/actions/workflows/ci.yml/badge.svg)](https://github.com/SJ-Hariharan/UnboxAnyRepo/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Paste a public GitHub repository URL. UnboxAnyRepo pins the exact commit, reads the code without running it, and tells you what the project is, how it is built, what it needs, what looks risky, and how to get it running. Static sites can be previewed live, and every investigation can be downloaded as a report.
 
 > **Nothing here is a safety verdict.** Static analysis finds known patterns and misses others. "No findings" does not mean "no vulnerabilities", and a passing check does not mean the code is safe to run.
@@ -9,8 +11,6 @@ Paste a public GitHub repository URL. UnboxAnyRepo pins the exact commit, reads 
 ![Security findings for a deliberately insecure demo repository](docs/screenshots/security-light.png)
 
 <sub>Screenshots use the bundled demo repositories in offline demo mode. Repository code was not executed; the run log image comes from a scripted test runner. Regenerate with `npm run screenshots`.</sub>
-
-*UnboxAnyRepo is a provisional name. Its availability as a domain, handle or trademark has not been checked.*
 
 ## What you get for a repository
 
@@ -50,15 +50,15 @@ GitHub URL ─▶ validate & pin commit ─▶ bounded archive, sanitized in mem
 - README instructions, Makefiles, Dockerfiles, CI workflows and install scripts are **never run** during analysis or preview.
 - Running anything (tests, builds for previews) needs a gVisor sandbox that has passed real-container tests; see [Running checks](#running-checks-sandbox).
 
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · [docs/API.md](docs/API.md).
 
 ## Quick start
 
 Requirements: **Node.js 22.18 or newer** (TypeScript runs through Node's type stripping; no build step). Docker is not needed.
 
 ```sh
-git clone <repository-url>   # placeholder: the public URL is not decided yet
-cd <repository-directory>
+git clone https://github.com/SJ-Hariharan/UnboxAnyRepo.git
+cd UnboxAnyRepo
 npm ci
 
 npm run demo    # offline: bundled demo repositories, no network
@@ -142,10 +142,23 @@ npm run test:docker               # real-container tests: skipped unless UNBOX_T
 - Server applications cannot be previewed; they get setup instructions.
 - State is in memory and one process is supported.
 
+## Documentation
+
+| | |
+|---|---|
+| [docs/SUPPORTED.md](docs/SUPPORTED.md) | What works for each project type |
+| [docs/API.md](docs/API.md) | HTTP API reference |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Modules, pipeline, previews, runner |
+| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | Assets, trust boundaries, mitigations, residual risks |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Free inspection-only hosting and gVisor sandbox hosts |
+| [docs/LAUNCH.md](docs/LAUNCH.md) | Launch checklist |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/RELEASE_REPORT.md](docs/RELEASE_REPORT.md) | What was tested for this release, and what was not |
+
 ## Contributing, security and licence
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 
 Released under the [MIT License](LICENSE). Runtime dependencies: `smol-toml` (BSD-3-Clause) and `yaml` (ISC). Optional external tools keep their own licences (Semgrep CE: LGPL-2.1; Gitleaks: MIT). Vulnerability data comes from OSV.dev and its sources.
 
-**Before a public launch, maintainers must still fill in:** the security contact in `SECURITY.md`, the conduct contact in `CODE_OF_CONDUCT.md`, the repository URL above, and the copyright holder in `LICENSE` if it should name a person or organisation. See [docs/LAUNCH.md](docs/LAUNCH.md).
+Issues and pull requests: <https://github.com/SJ-Hariharan/UnboxAnyRepo/issues>. Maintainer: [SJ-Hariharan](https://github.com/SJ-Hariharan).

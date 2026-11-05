@@ -3,6 +3,14 @@
   "version": "0.2.0",
   "private": true,
   "description": "From GitHub link to running project: inspect a public GitHub repository at a pinned commit, get a structured source and security analysis, setup instructions, and live previews of supported projects.",
+  "homepage": "https://github.com/SJ-Hariharan/UnboxAnyRepo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SJ-Hariharan/UnboxAnyRepo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SJ-Hariharan/UnboxAnyRepo/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.18.0"

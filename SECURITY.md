@@ -6,10 +6,19 @@ UnboxAnyRepo reads untrusted repositories, serves previews of untrusted web page
 
 Please **do not open a public issue**. Instead, report privately:
 
-- Email: `SECURITY-CONTACT@EXAMPLE.COM` *(placeholder: maintainers must replace this before launch)*
-- or use GitHub's private vulnerability reporting for this repository, once it is enabled.
+- Use GitHub's private vulnerability reporting: <https://github.com/SJ-Hariharan/UnboxAnyRepo/security/advisories/new>.
+- If that form is unavailable, open an issue that says only that you have a security report and asks the maintainer ([SJ-Hariharan](https://github.com/SJ-Hariharan)) for a private channel. Do not include details in the issue.
 
 Include what you found, how to reproduce it, the configuration you used (runner, runtime, limits), and the impact you believe it has. We aim to acknowledge reports within a few working days and will keep you informed while we work on a fix. We are happy to credit reporters who want to be credited.
+
+## Supported versions
+
+Only the latest release receives security fixes. Before 1.0, that means the latest `0.x` minor version.
+
+| Version | Supported |
+|---|---|
+| 0.2.x | yes |
+| < 0.2 (RepoRadar) | no |
 
 ## Scope
 

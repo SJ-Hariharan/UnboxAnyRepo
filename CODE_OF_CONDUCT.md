@@ -21,6 +21,6 @@ We want UnboxAnyRepo to be a welcoming project for everyone who uses or contribu
 
 This applies to all project spaces (issues, pull requests, discussions, chat) and to public spaces where someone represents the project.
 
-Report concerns privately to the maintainers at `CONDUCT-CONTACT@EXAMPLE.COM` *(placeholder: replace before launch)*. Reports are handled confidentially. Maintainers may respond with a warning, temporary restrictions, or a permanent ban, proportionate to the behaviour.
+Report concerns privately to the maintainer, [SJ-Hariharan](https://github.com/SJ-Hariharan) on GitHub. If you have no private way to reach them, open an issue that asks for a private channel, without details. Reports are handled confidentially. Maintainers may respond with a warning, temporary restrictions, or a permanent ban, proportionate to the behaviour.
 
 Maintainers who would prefer an established text can adopt the Contributor Covenant (https://www.contributor-covenant.org) instead of this document.

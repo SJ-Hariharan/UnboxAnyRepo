@@ -3,15 +3,19 @@
 ## Before making the repository public
 
 - [x] License: MIT `LICENSE` added (copyright "The UnboxAnyRepo contributors"). Replace the holder with a person or organisation if preferred, and confirm you have the right to license all contributions.
-- [ ] Decide whether to keep the provisional name; check domain, handle and trademark availability yourself.
-- [ ] Replace the security contact placeholder in `SECURITY.md`, and enable GitHub private vulnerability reporting.
-- [ ] **Commit `package-lock.json`** (generated and verified with `npm ci`; CI already uses `npm ci`).
-- [ ] Pin sandbox images by digest in your deployment, and pin GitHub Actions to commit SHAs.
+- [x] Repository published at <https://github.com/SJ-Hariharan/UnboxAnyRepo>; README, `package.json`, security and conduct contacts point to it.
+- [x] `package-lock.json` committed; CI uses `npm ci`.
+- [x] GitHub Actions pinned to commit SHAs.
+- [ ] Enable **private vulnerability reporting** (Settings → Code security), which `SECURITY.md` and the issue template link to.
+- [ ] Confirm both CI jobs (`test`, `scanners`) pass on GitHub.
+- [ ] Domain, handle and trademark availability of the name "UnboxAnyRepo" has not been checked; check it yourself before promoting it.
+- [ ] Tag the release (`v0.2.0`) and publish GitHub release notes from `CHANGELOG.md`, when you are ready.
+- [ ] Pin sandbox images by digest in your deployment.
 - [ ] Run `npm run check` and `npm run test:e2e`; and, if execution will be offered, `npm run sandbox -- --verify` on a real Linux + gVisor host.
 - [ ] Deploy an inspection-only instance (`render.yaml` or the `Dockerfile`) and test it end to end: health check, live inspection, report download, static preview.
 - [ ] If you host execution for others: follow `docs/DEPLOYMENT.md` exactly (dedicated sandbox VM, firewall, gVisor, reverse-proxy rate limits), and read `docs/THREAT_MODEL.md` once more.
 - [ ] Regenerate screenshots with `npm run screenshots`; keep the caption explaining they use the scripted runner.
-- [ ] Set the repository description, topics, social preview image and a pinned "Roadmap" discussion.
+- [ ] Set the repository description, topics (below), social preview image and a pinned "Roadmap" discussion.
 
 ## Repository description
 
@@ -64,7 +68,7 @@ Do not use bots, alternate accounts, vote rings, paid or incentivized stars, or 
 
 - `CONTRIBUTING.md`: setup, tests, and the rules for security-sensitive changes;
 - `CODE_OF_CONDUCT.md`: expected behaviour and enforcement;
-- `SECURITY.md`: private vulnerability reporting (placeholder contact to fill in);
+- `SECURITY.md`: private vulnerability reporting and supported versions;
 - `.github/ISSUE_TEMPLATE/`: bug report, feature request, ecosystem template request;
 - `.github/PULL_REQUEST_TEMPLATE.md`: includes a security checklist.
 
