@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           file="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}"
+          curl -fsSLO --retry 4 --retry-all-errors --retry-delay 5 "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${file}"
           echo "${GITLEAKS_SHA256}  ${file}" | sha256sum -c -
           tar -xzf "${file}" gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
