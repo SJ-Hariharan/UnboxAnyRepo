@@ -149,8 +149,11 @@ export interface TestInfo {
   commands: { command: string; source: string }[];
 }
 
+/** OSV.dev ecosystem names. */
+export type DependencyEcosystem = 'npm' | 'PyPI' | 'Go' | 'crates.io' | 'RubyGems' | 'Packagist' | 'NuGet' | 'Pub';
+
 export interface DependencyPackage {
-  ecosystem: 'npm' | 'PyPI' | 'Go' | 'crates.io';
+  ecosystem: DependencyEcosystem;
   name: string;
   version: string;
   /** The version is exact (from a lockfile or an == pin), not a range. */
@@ -165,6 +168,30 @@ export interface DependencySummary {
   /** Notes such as "no lockfile: versions are ranges". */
   notes: string[];
   truncated: boolean;
+}
+
+export type SubmoduleUrlKind = 'https' | 'ssh' | 'http' | 'git-protocol' | 'relative' | 'local' | 'ext-transport' | 'option-like' | 'other' | 'missing';
+
+export interface SubmoduleInfo {
+  name: string;
+  path?: string;
+  url?: string;
+  branch?: string;
+  urlKind: SubmoduleUrlKind;
+  /** Line of the [submodule] header in .gitmodules. */
+  line: number;
+}
+
+export interface LfsPointer {
+  path: string;
+  /** Size of the real object in bytes, from the pointer. */
+  size: number;
+}
+
+/** What GitHub archives leave out: submodule contents and Git LFS objects. */
+export interface GitMetaSummary {
+  submodules: SubmoduleInfo[];
+  lfs: { patterns: string[]; pointers: LfsPointer[]; pointerCount: number; pointerBytes: number };
 }
 
 export interface CompatibilityNote {
@@ -245,6 +272,7 @@ export interface AnalysisResult {
   env: EnvVarInfo[];
   tests: TestInfo;
   dependencies: DependencySummary;
+  git: GitMetaSummary;
   compatibility: CompatibilityNote[];
   launch: LaunchPlan;
   findings: Finding[];

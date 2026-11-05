@@ -18,10 +18,10 @@ Paste a public GitHub repository URL. UnboxAnyRepo pins the exact commit, reads 
 |---|---|
 | **Identity** | owner, default branch, exact commit SHA (everything below is pinned to it) |
 | **Stack and structure** | languages by size, frameworks, runtimes, package managers, top-level layout, likely entry points |
-| **Dependencies** | manifests and lockfiles, exact package versions, known vulnerabilities from [OSV.dev](https://osv.dev) |
+| **Dependencies** | manifests and lockfiles (also in monorepo subfolders), exact package versions for JavaScript, Python, Go, Rust, Ruby, PHP, .NET and Dart, known vulnerabilities from [OSV.dev](https://osv.dev) |
 | **Scripts and configuration** | build/start/test/install scripts (install lifecycle scripts highlighted), Dockerfiles, Compose services, CI workflows |
 | **Environment** | variable names the code and examples use (never values), which are documented |
-| **Security findings** | secrets, command/SQL injection, unsafe deserialization, path traversal, risky install scripts, Docker/Compose hardening, GitHub Actions permissions and injection, TLS/CORS/JWT/debug settings, vulnerable dependencies, published repository advisories |
+| **Security findings** | secrets, dangerous submodule URLs, command/SQL injection, unsafe deserialization, path traversal, risky install scripts, Docker/Compose hardening, GitHub Actions permissions and injection, TLS/CORS/JWT/debug settings, vulnerable dependencies, published repository advisories |
 | **Setup guide** | commands for your machine from fixed templates (install with scripts disabled, env file, backing services, run, test), ports, required services, compatibility notes (EOL runtimes, native modules, submodules, LFS, lockfile conflicts) |
 | **Live preview** | static sites and committed build output, served isolated from the app |
 | **Report** | Markdown and JSON download with every finding, the setup guide and the limitations |
@@ -135,10 +135,10 @@ npm run test:docker               # real-container tests: skipped unless UNBOX_T
 ## Limitations
 
 - Static analysis is pattern-based: it misses vulnerabilities that depend on data flow across files and reports false positives. Treat "heuristic" findings as leads.
-- Vulnerabilities are matched only for exact versions (lockfiles or `==` pins) and only as known to OSV.dev at the time.
+- Vulnerabilities are matched only for exact versions (lockfiles or `==` pins) and only as known to OSV.dev at the time. Maven and Gradle projects, and Bun's binary `bun.lockb`, are not checked.
 - Secrets are never tested, so a match may be a placeholder or revoked ("unverified").
 - Very large repositories are analysed partially; the coverage note says what was skipped.
-- Git submodules and Git LFS contents are not in GitHub archives; symlinks are not analysed.
+- Git submodule and Git LFS *contents* are not in GitHub archives. They are listed (submodule URLs, LFS pointer files and sizes) but not scanned. Symlinks are not followed.
 - Server applications cannot be previewed; they get setup instructions.
 - State is in memory and one process is supported.
 
@@ -161,4 +161,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUC
 
 Released under the [MIT License](LICENSE). Runtime dependencies: `smol-toml` (BSD-3-Clause) and `yaml` (ISC). Optional external tools keep their own licences (Semgrep CE: LGPL-2.1; Gitleaks: MIT). Vulnerability data comes from OSV.dev and its sources.
 
-Issues and pull requests: <https://github.com/SJ-Hariharan/UnboxAnyRepo/issues>. Maintainer: [SJ-Hariharan](https://github.com/SJ-Hariharan).
+Created and maintained by **Hariharan** ([@SJ-Hariharan](https://github.com/SJ-Hariharan)). Issues and pull requests: <https://github.com/SJ-Hariharan/UnboxAnyRepo/issues>. Contributors are listed in [AUTHORS.md](AUTHORS.md).

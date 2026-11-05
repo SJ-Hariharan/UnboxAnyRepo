@@ -135,9 +135,8 @@ Resolved since the first draft of this report: the code is committed; the reposi
 1. **GitHub private vulnerability reporting** must be enabled in the repository settings; `SECURITY.md` links to it.
 2. **CI** must pass on GitHub (see the Actions tab after the push).
 3. The **real-container tests have never run on gVisor**, so execution stays off everywhere until `npm run sandbox -- --verify` passes on a Linux gVisor host.
-4. The `LICENSE` copyright holder is "The UnboxAnyRepo contributors". Replace it with a person or organisation if you prefer.
-5. Domain, handle and trademark availability of "UnboxAnyRepo" is unchecked.
-6. No `v0.2.0` tag or GitHub release exists yet.
+4. Domain, handle and trademark availability of "UnboxAnyRepo" is unchecked.
+5. No `v0.2.0` tag or GitHub release exists yet.
 
 ## 9. Next actions for the maintainer
 

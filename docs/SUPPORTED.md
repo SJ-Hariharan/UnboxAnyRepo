@@ -26,11 +26,17 @@ What UnboxAnyRepo can do for each kind of repository. "Analysis" never runs repo
 
 | Ecosystem | Recognised | Exact versions for vulnerability lookup |
 |---|---|---|
-| npm | npm, Yarn (v1 and Berry), pnpm, Bun | `package-lock.json`/`npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`; exact pins in `package.json` when there is no lockfile |
+| npm | npm, Yarn (v1 and Berry), pnpm, Bun | `package-lock.json`/`npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock` (text; the binary `bun.lockb` cannot be read); exact pins in `package.json` when there is no lockfile |
 | Python | pip, Poetry, uv, Pipenv | `poetry.lock`, `uv.lock`, `Pipfile.lock`, `==` pins in requirements or `pyproject.toml` |
 | Go | modules | `go.mod` require versions |
 | Rust | Cargo | `Cargo.lock` |
-| Others | Bundler, Composer, Maven, Gradle (listed only) | not checked |
+| Ruby | Bundler | `Gemfile.lock` (gems from RubyGems; `GIT` and `PATH` gems are skipped) |
+| PHP | Composer | `composer.lock` (branch versions such as `dev-main` are skipped) |
+| .NET | NuGet | `packages.lock.json` (needs `RestorePackagesWithLockFile`) |
+| Dart / Flutter | pub | `pubspec.lock` (hosted packages) |
+| Others | Maven, Gradle (listed only) | not checked |
+
+Lockfiles are read at the root **and in subdirectories** (monorepos), shallowest first, up to 40 files. Lockfiles in test fixture folders (`fixtures/`, `testdata/`, …) are counted but not checked, because they usually pin old versions on purpose. Vendored folders are skipped.
 
 Version ranges are never guessed: if the installed version cannot be known without resolving dependencies, it is listed as not checked.
 
@@ -44,6 +50,8 @@ Version ranges are never guessed: if the installed version cannot be known witho
 | Docker, Compose, CI | parsed (YAML with alias limits) | GitHub Actions in depth; other CI providers listed |
 | Environment variables | example env files, Compose, Dockerfiles, `process.env`/`os.environ`/`os.Getenv`/… in code | names only, values are never read into results |
 | Tests | config files, test file names, frameworks | |
+| Git submodules | `.gitmodules`: name, path, URL, branch | contents are not in GitHub archives; URLs are never contacted. Findings for `ext::` transports, URLs starting with `-`, local paths, and unencrypted `http://`/`git://` |
+| Git LFS | pointer files (even with binary extensions), `.gitattributes` patterns | real content is not in the archive; the size each pointer stands for is reported |
 | Compatibility | runtime versions, lockfile conflicts, native modules, submodules, LFS, services, OS-specific scripts | heuristics |
 | Security | built-in rules, OSV.dev, Semgrep and Gitleaks if installed, GitHub repository advisories | see [THREAT_MODEL.md](THREAT_MODEL.md) and the report's limitations |
 

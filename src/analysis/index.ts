@@ -4,6 +4,7 @@
  * to the OSV.dev API (fixed host, guarded client) and, through the GitHub
  * client, published repository advisories.
  */
+import { analyseGitMeta } from './gitmeta.ts';
 import type { AnalysisConfig, Limits } from '../config.ts';
 import type { SourceFile, TextStats } from '../source/archive.ts';
 import type { AnalysisResult, Finding, FindingStatus, Severity, ToolRun, AdvisoryInfo } from './types.ts';
@@ -98,10 +99,11 @@ export async function analyseRepository(input: AnalyseInput, opts: AnalyseOption
   const infra = analyseInfra(src);
   const env = analyseEnv(src, infra);
   const dependencies = analyseDependencies(src, stack);
-  const { plan, compatibility } = planLaunch({ src, stack, infra, env, repo: input.repo, commitSha: input.commitSha, skippedSymlinks: input.skippedSymlinks });
+  const gitMeta = analyseGitMeta(src);
+  const { plan, compatibility } = planLaunch({ src, stack, infra, env, repo: input.repo, commitSha: input.commitSha, skippedSymlinks: input.skippedSymlinks, lfs: gitMeta.summary.lfs });
 
-  const local: Finding[] = [...scanSecrets(src), ...scanCode(src), ...scanConfig(stack, infra)];
-  const tools: ToolRun[] = [{ tool: 'Built-in rules', state: 'ran', findings: local.length, message: 'Secrets, insecure code patterns, install scripts, Docker, Compose and GitHub Actions configuration.' }];
+  const local: Finding[] = [...scanSecrets(src), ...scanCode(src), ...scanConfig(stack, infra), ...gitMeta.findings];
+  const tools: ToolRun[] = [{ tool: 'Built-in rules', state: 'ran', findings: local.length, message: 'Secrets, insecure code patterns, install scripts, Docker, Compose, GitHub Actions and Git submodule configuration.' }];
 
   const osvP = opts.config.osv
     ? checkOsv(dependencies.packages, { userAgent: opts.userAgent, timeoutMs: opts.limits.fetchTimeoutMs, ...(opts.signal ? { signal: opts.signal } : {}), ...(opts.osvTransport ? { transport: opts.osvTransport } : {}) })
@@ -144,6 +146,7 @@ export async function analyseRepository(input: AnalyseInput, opts: AnalyseOption
     env: env.vars.slice(0, 150),
     tests: stack.tests,
     dependencies: { ...dependencies, packages: dependencies.packages.slice(0, 3000) },
+    git: gitMeta.summary,
     compatibility,
     launch: plan,
     findings,

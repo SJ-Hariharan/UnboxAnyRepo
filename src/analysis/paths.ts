@@ -20,6 +20,7 @@ const BINARY_EXT = new Set([
 const LOCKFILE_NAMES = new Set([
   'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock',
   'Pipfile.lock', 'poetry.lock', 'uv.lock', 'Cargo.lock', 'go.sum', 'Gemfile.lock', 'composer.lock',
+  'packages.lock.json', 'pubspec.lock',
 ]);
 
 export function baseName(p: string): string {
@@ -50,7 +51,9 @@ export type SkipReason = 'vendored' | 'binary' | 'generated' | 'too_large';
 /** Decide whether a file's text should be kept for analysis, before reading the budget. */
 export function textSkipReason(p: string, size: number, maxFileBytes: number): SkipReason | null {
   if (isVendored(p)) return 'vendored';
-  if (isBinaryByName(p)) return 'binary';
+  // Tiny files are read even with a binary extension: Git LFS pointers look like that.
+  // Real binaries are still dropped by looksBinary (NUL bytes).
+  if (isBinaryByName(p)) return size <= 200 ? null : 'binary';
   if (isLockfile(p)) return size > maxFileBytes * 32 ? 'too_large' : null;
   if (GENERATED_RE.test(p)) return 'generated';
   if (size > maxFileBytes) return 'too_large';

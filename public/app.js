@@ -831,6 +831,21 @@ function renderConfig(a) {
         ...a.ci.map((/** @type {any} */ c) => h('p', {}, [h('code', {}, [c.path]), ` — ${c.provider}${c.jobs.length ? `, jobs: ${c.jobs.join(', ')}` : ''}`])),
         a.dockerfiles.length + a.compose.length + a.ci.length === 0 ? h('p', { class: 'muted' }, ['No Dockerfiles, Compose files or CI configuration found.']) : null,
       ]),
+      a.git && (a.git.submodules.length || a.git.lfs.pointerCount || a.git.lfs.patterns.length)
+        ? panel('Not in the archive: submodules and Git LFS', [
+            a.git.submodules.length
+              ? h('table', { class: 'table' }, [
+                  h('thead', {}, [h('tr', {}, [h('th', { scope: 'col' }, ['Submodule']), h('th', { scope: 'col' }, ['URL']), h('th', { scope: 'col' }, ['Kind'])])]),
+                  // URLs are repository content: shown as text, never as links.
+                  h('tbody', {}, a.git.submodules.slice(0, 40).map((/** @type {any} */ s) => h('tr', {}, [h('td', {}, [h('code', {}, [s.path || s.name])]), h('td', {}, [h('code', {}, [s.url || 'missing'])]), h('td', {}, [s.urlKind])]))),
+                ])
+              : null,
+            a.git.lfs.pointerCount
+              ? h('p', {}, [`${a.git.lfs.pointerCount} Git LFS pointer file${a.git.lfs.pointerCount === 1 ? '' : 's'}: ${(a.git.lfs.pointerBytes / 1048576).toFixed(1)} MB of content is fetched only by "git lfs pull" and was not analysed.`])
+              : a.git.lfs.patterns.length ? h('p', {}, [`Git LFS patterns (${a.git.lfs.patterns.join(', ')}), but no pointer files were found in the analysed text.`]) : null,
+            h('p', { class: 'muted small' }, ['GitHub source archives leave these out, so their contents were not scanned.']),
+          ])
+        : null,
       panel(`Secrets and configuration warnings (${configFindings.length})`, [
         configFindings.length ? h('ul', { class: 'finding-list' }, configFindings.slice(0, 40).map(renderFinding)) : h('p', { class: 'muted' }, ['None from the checks that ran.']),
       ]),

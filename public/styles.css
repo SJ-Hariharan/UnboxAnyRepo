@@ -105,6 +105,8 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.875em; }
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 650; font-size: 1.05rem; }
+.brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand { min-width: 0; }
 .brand-mark { width: 28px; height: 28px; }
 .brand-mark .bg { fill: #1f3f6e; }
 .brand-mark .lid { fill: var(--amber-edge); }
@@ -115,9 +117,9 @@ code, pre, .mono { font-family: var(--mono); font-size: 0.875em; }
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 0.875rem; color: var(--muted);
   padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
-  max-width: 60%;
+  max-width: 60%; min-width: 0;
 }
-.exec-status span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exec-status span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .exec-status[data-state="strong"] .exec-dot { background: var(--pass); }
 .exec-status[data-state="unsafe-local"] { border-color: var(--fail); color: var(--fail); }

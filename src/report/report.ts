@@ -102,6 +102,17 @@ export function markdownReport(insp: Inspection, productName: string = BRAND.nam
   for (const n of a.dependencies.notes) p(`- ${md(n, 400)}`);
   p('');
 
+  if (a.git.submodules.length) {
+    p('## Git submodules', '', 'Submodule contents are not in GitHub source archives and were not analysed.', '', '| Name | Path | URL | Kind |', '|---|---|---|---|');
+    for (const s of a.git.submodules) p(`| ${md(s.name, 80)} | ${s.path ? md(s.path, 120) : '—'} | ${s.url ? md(s.url, 200) : 'missing'} | ${s.urlKind} |`);
+    p('');
+  }
+  if (a.git.lfs.pointerCount > 0) {
+    p('## Git LFS files', '', `${a.git.lfs.pointerCount} pointer file${a.git.lfs.pointerCount === 1 ? '' : 's'}; ${(a.git.lfs.pointerBytes / 1048576).toFixed(1)} MB of content is fetched only by \`git lfs pull\` and was not analysed.`, '');
+    for (const x of a.git.lfs.pointers.slice(0, 30)) p(`- ${md(x.path, 200)} (${(x.size / 1048576).toFixed(2)} MB)`);
+    p('');
+  }
+
   const scripts = a.scripts.filter((s) => s.kind !== 'other').slice(0, 40);
   if (scripts.length) {
     p('## Build, start and install scripts', '', '| Source | Name | Kind | Command |', '|---|---|---|---|');

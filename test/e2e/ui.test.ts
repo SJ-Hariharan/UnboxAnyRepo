@@ -3,7 +3,7 @@
  * Browser tests against the real UI and API, using bundled demo fixtures and
  * a scripted test runner (nothing is executed). Requires Playwright's Chromium.
  */
-import { test, before, after } from 'node:test';
+import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
@@ -20,6 +20,8 @@ before(async () => {
   srv = await startServer({ runner });
   browser = await chromium.launch();
 });
+// A failed test must not leave a hanging scripted run behind for the next one.
+afterEach(() => runner.reset());
 after(async () => {
   await browser?.close();
   await srv?.close();
@@ -34,6 +36,36 @@ async function open(base = srv.base, opts: Parameters<Browser['newPage']>[0] = {
   await page.goto(base);
   await page.getByText(/Sandbox ready|Execution disabled/).waitFor();
   return page;
+}
+
+/** Page overflow in px, and the outermost elements that stick out past the viewport (for failure messages). */
+async function horizontalOverflow(page: Page): Promise<{ px: number; culprits: string }> {
+  return page.evaluate(() => {
+    const W = window.innerWidth;
+    const out: string[] = [];
+    for (const el of document.querySelectorAll('body *')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.right <= W + 0.5) continue;
+      const pr = el.parentElement?.getBoundingClientRect();
+      if (pr && pr.right > W + 0.5) continue;
+      // Content inside its own scrolling strip does not make the page scroll.
+      let scrolls = false;
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX !== 'visible') scrolls = true;
+      }
+      if (scrolls) continue;
+      out.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${[...el.classList].map((c) => `.${c}`).join('')} (right ${Math.round(r.right)}px)`);
+    }
+    return { px: document.documentElement.scrollWidth - W, culprits: out.slice(0, 8).join(', ') };
+  });
+}
+
+/** Make every glyph wider, as with the fallback fonts on some Linux CI images. */
+async function widenFonts(page: Page, spacing = '0.1em') {
+  await page.evaluate((sp) => {
+    const sheet = [...document.styleSheets].find((x) => x.href?.endsWith('/styles.css'));
+    sheet?.insertRule(`* { letter-spacing: ${sp} !important; }`, sheet.cssRules.length);
+  }, spacing);
 }
 
 async function inspect(page: Page, name: string) {
@@ -155,8 +187,8 @@ test('mobile layout has no horizontal scrolling; reduced motion stops the hazard
   await page.getByLabel(/I understand that code from/).check();
   await page.getByRole('button', { name: 'Start check' }).click();
   await page.locator('#chamber[data-active="true"]').waitFor();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
+  const overflow = await horizontalOverflow(page);
+  assert.ok(overflow.px <= 0, `horizontal overflow ${overflow.px}px: ${overflow.culprits}`);
   const anim = await page.locator('.chamber-band').evaluate((el) => getComputedStyle(el).animationName);
   assert.equal(anim, 'none');
   await page.getByRole('button', { name: 'Cancel run' }).click();
@@ -248,7 +280,18 @@ test('mobile: the investigation workspace has no horizontal scrolling', async ()
   const page = await open(srv.base, { viewport: { width: 375, height: 800 } });
   await inspect(page, 'flask-app');
   await page.locator('#sec-setup').scrollIntoViewIfNeeded();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  assert.ok(overflow <= 0, `horizontal overflow ${overflow}px`);
+  const overflow = await horizontalOverflow(page);
+  assert.ok(overflow.px <= 0, `horizontal overflow ${overflow.px}px: ${overflow.culprits}`);
   await page.close();
+});
+
+test('mobile: no horizontal scrolling even with wider fonts', async () => {
+  for (const name of ['flask-app', 'risky-node-api']) {
+    const page = await open(srv.base, { viewport: { width: 375, height: 800 } });
+    await widenFonts(page);
+    await inspect(page, name);
+    const overflow = await horizontalOverflow(page);
+    assert.ok(overflow.px <= 0, `${name}: horizontal overflow ${overflow.px}px: ${overflow.culprits}`);
+    await page.close();
+  }
 });

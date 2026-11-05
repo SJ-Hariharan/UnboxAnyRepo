@@ -38,7 +38,7 @@ Browser (preview origin: <token>.<preview-domain>, opaque origin via CSP sandbox
 | `src/github/` | URL parsing, guarded HTTPS client (also used for OSV), GitHub API client |
 | `src/source/` | tar reader/writer and the archive sanitizer; collects bounded text for analysis (code first, docs/data in a smaller budget) |
 | `src/detect/`, `src/checks/` | ecosystem detection and the allowlisted check templates (for sandbox checks) |
-| `src/analysis/` | the investigation: `stack`, `structure`, `infra` (Docker/Compose/CI/env), `deps` (lockfiles), `launch` (setup plan, ports, services, preview eligibility, compatibility), `rules/` (secrets, code, configuration), `osv`, `scanners`, `index` (orchestration, de-duplication, grouping) |
+| `src/analysis/` | the investigation: `stack`, `structure`, `infra` (Docker/Compose/CI/env), `deps` (lockfiles at any depth), `gitmeta` (submodules, Git LFS pointers), `launch` (setup plan, ports, services, preview eligibility, compatibility), `rules/` (secrets, code, configuration), `osv`, `scanners`, `index` (orchestration, de-duplication, grouping) |
 | `src/report/` | Markdown and JSON reports with escaping of all repository text |
 | `src/preview/` | preview store (tokens, ownership, expiry, memory caps), tar extraction for previews, health checks, response headers |
 | `src/runner/` | sandbox runner interface, Docker implementation, factory (fails closed), verification (gVisor probe + recorded test run) |

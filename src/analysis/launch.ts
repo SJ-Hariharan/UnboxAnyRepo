@@ -56,6 +56,8 @@ export interface LaunchInput {
   repo: { fullName: string; htmlUrl: string; name: string };
   commitSha: string;
   skippedSymlinks: number;
+  /** Git LFS pointers found in the snapshot. */
+  lfs?: { pointerCount: number; pointerBytes: number };
 }
 
 export function planLaunch(input: LaunchInput): { plan: LaunchPlan; compatibility: CompatibilityNote[] } {
@@ -292,9 +294,18 @@ export function planLaunch(input: LaunchInput): { plan: LaunchPlan; compatibilit
   const nativePy = NATIVE_PY.filter(hasPy);
   if (nativePy.length) compat.push({ level: 'warning', message: `Python packages with native parts (${nativePy.join(', ')}) may need system libraries or compilers.` });
   if (['torch', 'tensorflow', 'jax', 'jaxlib'].some(hasPy)) compat.push({ level: 'info', message: 'Uses a large machine-learning framework: expect multi-gigabyte downloads; GPU acceleration needs matching drivers.' });
-  if (src.has('.gitmodules')) compat.push({ level: 'blocker', message: 'Uses Git submodules. Their contents are not part of GitHub source archives, so this analysis and any download from GitHub miss them. Clone with --recurse-submodules.', evidence: '.gitmodules' });
+  if (src.has('.gitmodules')) compat.push({ level: 'blocker', message: 'Uses Git submodules (listed under Configuration). Their contents are not part of GitHub source archives, so this analysis and any download from GitHub miss them. Clone with --recurse-submodules.', evidence: '.gitmodules' });
   const attrs = src.text('.gitattributes');
-  if (attrs && /filter=lfs/.test(attrs)) compat.push({ level: 'warning', message: 'Uses Git LFS: large files appear as small pointer files in archives. Install git-lfs and run "git lfs pull" after cloning.', evidence: '.gitattributes' });
+  const lfs = input.lfs;
+  if (lfs && lfs.pointerCount > 0) {
+    compat.push({
+      level: 'warning',
+      message: `${lfs.pointerCount} file${lfs.pointerCount === 1 ? ' is a Git LFS pointer' : 's are Git LFS pointers'} (${(lfs.pointerBytes / 1048576).toFixed(1)} MB of real content not in the archive or this analysis). Install git-lfs and run "git lfs pull" after cloning.`,
+      evidence: '.gitattributes',
+    });
+  } else if (attrs && /filter=lfs/.test(attrs)) {
+    compat.push({ level: 'warning', message: 'Uses Git LFS: large files appear as small pointer files in archives. Install git-lfs and run "git lfs pull" after cloning.', evidence: '.gitattributes' });
+  }
   if (input.skippedSymlinks > 0) compat.push({ level: 'info', message: `${input.skippedSymlinks} symbolic link${input.skippedSymlinks === 1 ? ' was' : 's were'} not analysed; they exist in a real clone.` });
   if (src.files.some((f) => f.path.startsWith('node_modules/'))) compat.push({ level: 'warning', message: 'node_modules is committed. It may be stale or platform-specific; reinstall instead of using it.' });
   if (node && (Object.hasOwn(node.pkg, 'workspaces') || src.has('pnpm-workspace.yaml') || src.has('lerna.json') || src.has('turbo.json') || src.has('nx.json'))) compat.push({ level: 'info', message: 'This is a monorepo. The steps cover the root; individual packages may have their own scripts.' });

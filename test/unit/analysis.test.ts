@@ -221,7 +221,8 @@ test('analysis budget: source code is kept before docs and data; coverage is rep
 
 test('binary and vendored files are skipped for analysis', () => {
   assert.equal(textSkipReason('node_modules/x/index.js', 10, 1000), 'vendored');
-  assert.equal(textSkipReason('img/a.png', 10, 1000), 'binary');
+  assert.equal(textSkipReason('img/a.png', 5000, 1000), 'binary');
+  assert.equal(textSkipReason('img/a.png', 130, 1000), null, 'tiny files are read: they may be Git LFS pointers (real binaries fail looksBinary)');
   assert.equal(textSkipReason('dist/app.min.js', 10, 1000), 'generated');
   assert.equal(textSkipReason('big.js', 2000, 1000), 'too_large');
   assert.equal(textSkipReason('package-lock.json', 20_000, 1000), null, 'lockfiles get a larger allowance');

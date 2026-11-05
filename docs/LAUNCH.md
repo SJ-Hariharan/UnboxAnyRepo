@@ -2,7 +2,7 @@
 
 ## Before making the repository public
 
-- [x] License: MIT `LICENSE` added (copyright "The UnboxAnyRepo contributors"). Replace the holder with a person or organisation if preferred, and confirm you have the right to license all contributions.
+- [x] License: MIT `LICENSE`, copyright Hariharan and the UnboxAnyRepo contributors; authors in `AUTHORS.md`.
 - [x] Repository published at <https://github.com/SJ-Hariharan/UnboxAnyRepo>; README, `package.json`, security and conduct contacts point to it.
 - [x] `package-lock.json` committed; CI uses `npm ci`.
 - [x] GitHub Actions pinned to commit SHAs.

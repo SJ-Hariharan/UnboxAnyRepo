@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "description": "From GitHub link to running project: inspect a public GitHub repository at a pinned commit, get a structured source and security analysis, setup instructions, and live previews of supported projects.",
+  "author": "Hariharan (https://github.com/SJ-Hariharan)",
   "homepage": "https://github.com/SJ-Hariharan/UnboxAnyRepo#readme",
   "repository": {
     "type": "git",

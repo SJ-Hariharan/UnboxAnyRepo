@@ -58,7 +58,7 @@ Fetches and analyses one public GitHub repository at a pinned commit. No reposit
 | `source` | Archive size and file counts |
 | `detection` | Ecosystems, warnings and unsupported signals |
 | `checks` | Available checks, each with its steps, repository scripts it would run, and `blockedReason` if it cannot start |
-| `analysis` | Stack, structure, dependencies, configuration, environment variable names, launch plan, preview eligibility, findings, tool states and coverage |
+| `analysis` | Stack, structure, dependencies, configuration, environment variable names, Git submodules and LFS pointers (`git`), launch plan, preview eligibility, findings, tool states and coverage |
 
 Inspections expire after `UNBOX_INSPECTION_RETENTION_SEC` (default 15 minutes).
 

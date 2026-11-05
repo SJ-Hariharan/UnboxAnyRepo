@@ -18,6 +18,15 @@ export class FakeRunner implements Runner {
   executions = 0;
   statusOverride: Partial<RunnerStatus> = {};
   script: FakeScript = { lines: ['ok\n'] };
+  private readonly pending = new Set<() => void>();
+
+  /** Restore the default script and end every run still waiting, as if cancelled. Call between tests. */
+  reset(): void {
+    this.script = { lines: ['ok\n'] };
+    this.statusOverride = {};
+    for (const release of this.pending) release();
+    this.pending.clear();
+  }
 
   async status(): Promise<RunnerStatus> {
     return {
@@ -41,11 +50,15 @@ export class FakeRunner implements Runner {
     }
     for (const l of s.lines ?? []) req.onOutput('out', Buffer.from(l));
     req.onOutputEnd('out');
+    let release = () => {};
     const wait = new Promise<'aborted' | 'done'>((resolve) => {
+      release = () => resolve('aborted');
+      this.pending.add(release);
       if (!s.ignoreAbort) req.signal.addEventListener('abort', () => resolve('aborted'), { once: true });
       if (!s.hang) setTimeout(() => resolve('done'), s.delayMs ?? 5);
     });
     const how = await wait;
+    this.pending.delete(release);
     if (how === 'aborted') return { outcome: 'cancelled', cleanup: 'confirmed' };
     const collected = req.collect ? (s.artifact ? { artifact: s.artifact } : { artifactError: 'The build did not produce output.' }) : {};
     return { outcome: 'succeeded', exitCode: 0, cleanup: 'confirmed', ...collected, ...s.result };

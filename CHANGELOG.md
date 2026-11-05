@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Dependency vulnerability lookup for **Ruby** (`Gemfile.lock`), **PHP** (`composer.lock`), **.NET** (`packages.lock.json`), **Dart/Flutter** (`pubspec.lock`) and **Bun** (`bun.lock`). Each was checked against the live OSV.dev API.
+- Lockfiles in **subdirectories** (monorepos) are read, up to 40. Lockfiles in test fixtures are counted but not checked.
+- **Git submodules** are listed from `.gitmodules`, with findings for `ext::` transports, URLs starting with `-` (CVE-2017-1000117), local paths, and unencrypted `http://`/`git://` URLs.
+- **Git LFS pointer files** are found, even with binary extensions, and reported with the size of the content they stand for.
+- `AUTHORS.md`.
+
+### Fixed
+
+- Mobile header: the sandbox status badge could push the page wider than the screen with wider fonts, as on GitHub's Ubuntu runners.
+- Browser tests: a failed test no longer leaves a scripted run hanging, which had stalled CI until it timed out.
+- A repository with only `bun.lock` was reported as having no npm lockfile.
+- npm workspace members listed in `package-lock.json` are no longer treated as downloaded packages.
+
+### Changed
+
+- Copyright and package author: Hariharan ([@SJ-Hariharan](https://github.com/SJ-Hariharan)) and the UnboxAnyRepo contributors.
+
 ## [0.2.0] - 2026-10-24
 
 First public release as **UnboxAnyRepo**.
